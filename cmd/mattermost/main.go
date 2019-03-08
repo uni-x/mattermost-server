@@ -10,6 +10,7 @@ import (
 
 	// Plugins
 	_ "github.com/uni-x/mattermost-server/model/gitlab"
+	_ "github.com/uni-x/mattermost-server/model/office365"
 
 	// Enterprise Imports
 	_ "github.com/uni-x/mattermost-server/imports"

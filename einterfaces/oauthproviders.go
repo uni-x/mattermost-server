@@ -6,6 +6,7 @@ package einterfaces
 import (
 	"io"
 
+	"fmt"
 	"github.com/uni-x/mattermost-server/model"
 )
 
@@ -16,6 +17,7 @@ type OauthProvider interface {
 var oauthProviders = make(map[string]OauthProvider)
 
 func RegisterOauthProvider(name string, newProvider OauthProvider) {
+	fmt.Println("Registering ", name)
 	oauthProviders[name] = newProvider
 }
 

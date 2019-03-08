@@ -188,7 +188,7 @@ func (a *App) CreateUser(user *model.User) (*model.User, *model.AppError) {
 		return nil, model.NewAppError("CreateUser", "api.user.create_user.accepted_domain.app_error", nil, "", http.StatusBadRequest)
 	}
 
-	user.Roles = model.SYSTEM_USER_ROLE_ID
+	user.Roles = model.SYSTEM_USER_ROLE_ID + " " + user.Roles
 
 	// Below is a special case where the first user in the entire
 	// system is granted the system_admin role
@@ -197,7 +197,7 @@ func (a *App) CreateUser(user *model.User) (*model.User, *model.AppError) {
 		return nil, result.Err
 	}
 	if result.Data.(int64) <= 0 {
-		user.Roles = model.SYSTEM_ADMIN_ROLE_ID + " " + model.SYSTEM_USER_ROLE_ID
+		user.Roles = model.SYSTEM_ADMIN_ROLE_ID + " " + user.Roles
 	}
 
 	if _, ok := utils.GetSupportedLocales()[user.Locale]; !ok {
@@ -300,19 +300,24 @@ func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(teamId) > 0 {
-		err = a.AddUserToTeamByTeamId(teamId, user)
-		if err != nil {
-			return nil, err
-		}
-
-		err = a.AddDirectChannels(teamId, user)
-		if err != nil {
-			mlog.Error(err.Error())
-		}
+	err = a.AddUserToAllTeams(user)
+	if err != nil {
+		panic(err)
+		return nil, err
 	}
+	/*
+		if len(teamId) > 0 {
+			err = a.AddUserToTeamByTeamId(teamId, user)
+			if err != nil {
+				return nil, err
+			}
 
+			err = a.AddDirectChannels(teamId, user)
+			if err != nil {
+				mlog.Error(err.Error())
+			}
+		}
+	*/
 	return ruser, nil
 }
 

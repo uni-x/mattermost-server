@@ -40,6 +40,9 @@ func (a *App) CreateTeamWithUser(team *model.Team, userId string) (*model.Team, 
 	if err != nil {
 		return nil, err
 	}
+	if !strings.Contains(user.Roles, "system_admin") {
+		return nil, nil
+	}
 	team.Email = user.Email
 
 	if !a.isTeamEmailAllowed(user, team) {
@@ -330,6 +333,21 @@ func (a *App) AddUserToTeamByTeamId(teamId string, user *model.User) *model.AppE
 		return result.Err
 	}
 	return a.JoinUserToTeam(result.Data.(*model.Team), user, "")
+}
+
+func (a *App) AddUserToAllTeams(user *model.User) *model.AppError {
+	result := <-a.Srv.Store.Team().GetAll()
+	if result.Err != nil {
+		return result.Err
+	}
+	teams := result.Data.([]*model.Team)
+	for _, team := range result.Data.([]*model.Team) {
+		err := a.JoinUserToTeam(team, user, "")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *App) AddUserToTeamByToken(userId string, tokenId string) (*model.Team, *model.AppError) {

@@ -73,7 +73,8 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subpath, _ := utils.GetSubpathFromConfig(c.App.Config())
-	siteURLHeader := app.GetProtocol(r) + "://" + r.Host + subpath
+	//siteURLHeader := app.GetProtocol(r) + "://" + r.Host + subpath
+	siteURLHeader := "https://" + r.Host + subpath
 	c.SetSiteURLHeader(siteURLHeader)
 
 	w.Header().Set(model.HEADER_REQUEST_ID, c.App.RequestId)
@@ -85,9 +86,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if h.IsStatic {
 		// Instruct the browser not to display us in an iframe unless is the same origin for anti-clickjacking
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		//w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("X-Frame-Options", "ALLOW-FROM https://uni-x.slava.zgordan.ru")
 		// Set content security policy. This is also specified in the root.html of the webapp in a meta tag.
-		w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'; script-src 'self' cdn.segment.com/analytics.js/")
+		//w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'; script-src 'self' cdn.segment.com/analytics.js/")
 	} else {
 		// All api response bodies will be JSON formatted by default
 		w.Header().Set("Content-Type", "application/json")

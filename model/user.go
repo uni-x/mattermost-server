@@ -601,7 +601,7 @@ func IsValidUsername(s string) bool {
 }
 
 func CleanUsername(s string) string {
-	s = NormalizeUsername(strings.Replace(s, " ", "-", -1))
+	s = NormalizeUsername(strings.Replace(s, " ", "_", -1))
 
 	for _, value := range reservedName {
 		if s == value {

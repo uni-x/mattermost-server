@@ -669,7 +669,7 @@ func GenerateLimitedClientConfig(c *model.Config, diagnosticId string, license *
 	props["SamlLoginButtonBorderColor"] = ""
 	props["SamlLoginButtonTextColor"] = ""
 	props["EnableSignUpWithGoogle"] = "false"
-	props["EnableSignUpWithOffice365"] = "false"
+	props["EnableSignUpWithOffice365"] = "true"
 	props["EnableCustomBrand"] = strconv.FormatBool(*c.TeamSettings.EnableCustomBrand)
 	props["CustomBrandText"] = *c.TeamSettings.CustomBrandText
 	props["CustomDescriptionText"] = *c.TeamSettings.CustomDescriptionText
@@ -697,7 +697,8 @@ func GenerateLimitedClientConfig(c *model.Config, diagnosticId string, license *
 			props["EnableSignUpWithGoogle"] = strconv.FormatBool(*c.GoogleSettings.Enable)
 		}
 
-		if *license.Features.Office365OAuth {
+		//if *license.Features.Office365OAuth {
+		if true {
 			props["EnableSignUpWithOffice365"] = strconv.FormatBool(*c.Office365Settings.Enable)
 		}
 
