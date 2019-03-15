@@ -340,7 +340,6 @@ func (a *App) AddUserToAllTeams(user *model.User) *model.AppError {
 	if result.Err != nil {
 		return result.Err
 	}
-	teams := result.Data.([]*model.Team)
 	for _, team := range result.Data.([]*model.Team) {
 		err := a.JoinUserToTeam(team, user, "")
 		if err != nil {
