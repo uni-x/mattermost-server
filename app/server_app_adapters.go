@@ -9,13 +9,13 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/pkg/errors"
 	"github.com/uni-x/mattermost-server/mlog"
 	"github.com/uni-x/mattermost-server/model"
 	"github.com/uni-x/mattermost-server/services/mailservice"
 	"github.com/uni-x/mattermost-server/store"
 	"github.com/uni-x/mattermost-server/store/sqlstore"
 	"github.com/uni-x/mattermost-server/utils"
-	"github.com/pkg/errors"
 )
 
 // This is a bridge between the old and new initalization for the context refactor.

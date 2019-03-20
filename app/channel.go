@@ -163,6 +163,61 @@ func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*mod
 	return rchannel, nil
 }
 
+func (a *App) CreateChannelWithUserAzureId(channelDisplayName, azureId string, creds *model.ChannelCreds) (*model.Channel, *model.AppError) {
+	result := <-a.Srv.Store.Team().GetAll()
+	if result.Err != nil {
+		return nil, result.Err
+	}
+
+	teams := result.Data.([]*model.Team)
+	if len(teams) != 1 {
+		return nil, model.NewAppError("CreateChannelWithUserAzureId", "api.channel.create_channel.invalid_character.app_error", nil, "", http.StatusBadRequest)
+	}
+
+	channelName := strings.ToLower(strings.Join(strings.Fields(channelDisplayName), "-"))
+
+	channel := &model.Channel{DisplayName: channelDisplayName, Name: channelName, Type: model.CHANNEL_OPEN, TeamId: teams[0].Id}
+
+	// Get total number of channels on current team
+	count, err := a.GetNumberOfChannelsOnTeam(channel.TeamId)
+	if err != nil {
+		return nil, err
+	}
+
+	if int64(count+1) > *a.Config().TeamSettings.MaxChannelsPerTeam {
+		return nil, model.NewAppError("CreateChannelWithUser", "api.channel.create_channel.max_channel_limit.app_error", map[string]interface{}{"MaxChannelsPerTeam": *a.Config().TeamSettings.MaxChannelsPerTeam}, "", http.StatusBadRequest)
+	}
+
+	result = <-a.Srv.Store.User().GetByAuth(&azureId, "office365")
+	if result.Err != nil {
+		return nil, result.Err
+	}
+
+	user := result.Data.(*model.User)
+	userId := user.Id
+
+	channel.CreatorId = userId
+
+	rchannel, err := a.CreateChannel(channel, true)
+	if err != nil {
+		return nil, err
+	}
+
+	result = <-a.Srv.Store.Channel().UpdateChannelCreds(channel.Id, creds)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+
+	a.postJoinChannelMessage(user, channel)
+
+	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_CHANNEL_CREATED, "", "", userId, nil)
+	message.Add("channel_id", channel.Id)
+	message.Add("team_id", channel.TeamId)
+	a.Publish(message)
+
+	return rchannel, nil
+}
+
 // RenameChannel is used to rename the channel Name and the DisplayName fields
 func (a *App) RenameChannel(channel *model.Channel, newChannelName string, newDisplayName string) (*model.Channel, *model.AppError) {
 	if channel.Type == model.CHANNEL_DIRECT {
@@ -1873,4 +1928,29 @@ func (a *App) FillInChannelsProps(channelList *model.ChannelList) *model.AppErro
 	}
 
 	return nil
+}
+
+func (a *App) CheckChannelCreds(channelId, userId string, azureRoles []string, channelRole string) (bool, *model.AppError) {
+	var result store.StoreResult
+	switch channelRole {
+	case "owner":
+		result = <-a.Srv.Store.Channel().CheckOwnerCreds(channelId, userId, azureRoles)
+	case "moderator":
+		result = <-a.Srv.Store.Channel().CheckModeratorCreds(channelId, userId, azureRoles)
+	case "member":
+		result = <-a.Srv.Store.Channel().CheckMemberCreds(channelId, userId, azureRoles)
+	case "replier":
+		result = <-a.Srv.Store.Channel().CheckReplierCreds(channelId, userId, azureRoles)
+	case "viewer":
+		result = <-a.Srv.Store.Channel().CheckViewerCreds(channelId, userId, azureRoles)
+	}
+	if result.Err != nil {
+		return false, result.Err
+	}
+	return result.Data.(bool), nil
+}
+
+func (a *App) UpdateChannelCreds(channelId string, creds *model.ChannelCreds) *model.AppError {
+	result := <-a.Srv.Store.Channel().UpdateChannelCreds(channelId, creds)
+	return result.Err
 }

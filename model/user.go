@@ -69,6 +69,7 @@ type User struct {
 	LastName           string    `json:"last_name"`
 	Position           string    `json:"position"`
 	Roles              string    `json:"roles"`
+	AzureRoles         string    `json:"azure_roles"`
 	AllowMarketing     bool      `json:"allow_marketing,omitempty"`
 	Props              StringMap `json:"props,omitempty"`
 	NotifyProps        StringMap `json:"notify_props,omitempty"`
@@ -449,8 +450,16 @@ func (u *User) GetRoles() []string {
 	return strings.Fields(u.Roles)
 }
 
+func (u *User) GetAzureRoles() []string {
+	return strings.Fields(u.AzureRoles)
+}
+
 func (u *User) GetRawRoles() string {
 	return u.Roles
+}
+
+func (u *User) GetRawAzureRoles() string {
+	return u.AzureRoles
 }
 
 func IsValidUserRoles(userRoles string) bool {

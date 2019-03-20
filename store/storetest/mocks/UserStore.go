@@ -848,3 +848,8 @@ func (_m *UserStore) VerifyEmail(userId string) store.StoreChannel {
 
 	return r0
 }
+
+func (_m *UserStore) GetAzureRoles(userId string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}

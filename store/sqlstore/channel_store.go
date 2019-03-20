@@ -291,6 +291,12 @@ func NewSqlChannelStore(sqlStore SqlStore, metrics einterfaces.MetricsInterface)
 		tablem.ColMap("Roles").SetMaxSize(64)
 		tablem.ColMap("NotifyProps").SetMaxSize(2000)
 
+		tableCreds := db.AddTableWithName(model.ChannelCredElement{}, "ChannelCreds").SetKeys(false, "ChannelId", "UserId", "AzureRole")
+		tableCreds.ColMap("ChannelId").SetMaxSize(32)
+		tableCreds.ColMap("UserId").SetMaxSize(32)
+		tableCreds.ColMap("AzureRole").SetMaxSize(32)
+		tableCreds.ColMap("ChannelRole").SetMaxSize(32)
+
 		tablePublicChannels := db.AddTableWithName(publicChannel{}, "PublicChannels").SetKeys(false, "Id")
 		tablePublicChannels.ColMap("Id").SetMaxSize(26)
 		tablePublicChannels.ColMap("TeamId").SetMaxSize(26)
@@ -2555,4 +2561,298 @@ func (s SqlChannelStore) GetChannelMembersForExport(userId string, teamId string
 
 		result.Data = members
 	})
+}
+
+var validRoles = map[string]bool{
+	"STUDENT":   true,
+	"PARENT":    true,
+	"TEACHER":   true,
+	"MODERATOR": true,
+}
+
+func prepareQuery(userId string, azureRoles []string) string {
+	rolesOut := []string{}
+	for _, role := range azureRoles {
+		if _, ok := validRoles[role]; ok {
+			rolesOut = append(rolesOut, role)
+		}
+	}
+	query := `
+            SELECT
+                COUNT(*)
+            FROM
+                ChannelCreds
+            WHERE
+                ChannelId = :ChannelId
+	    AND
+	        ChannelRole = :ChannelRole
+	    AND `
+	if len(rolesOut) > 0 {
+		rolesQuery := ""
+		rolesLimit := len(rolesOut) - 1
+		for i, role := range rolesOut {
+			rolesQuery += "'" + role + "'"
+			if i < rolesLimit {
+				rolesQuery += ", "
+			}
+		}
+		if userId != "" {
+			query += `(
+	        UserId = :UserId
+		    OR
+		AzureRole IN (` + rolesQuery + `)
+		)`
+		} else {
+			query += `
+		AzureRole IN (` + rolesQuery + `)
+		`
+		}
+	} else {
+		query += `
+	        UserId = :UserId
+		`
+	}
+	return query
+}
+
+func (s SqlChannelStore) CheckOwnerCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
+	query := prepareQuery(userId, azureRoles)
+	return store.Do(func(result *store.StoreResult) {
+		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result.Data = isOwner
+	})
+}
+
+func (s SqlChannelStore) CheckModeratorCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
+	query := prepareQuery(userId, azureRoles)
+	return store.Do(func(result *store.StoreResult) {
+		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isOwner {
+			result.Data = true
+			return
+		}
+		isModerator, err := s.checkCreds(channelId, "moderator", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result.Data = isModerator
+	})
+}
+
+func (s SqlChannelStore) CheckMemberCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
+	query := prepareQuery(userId, azureRoles)
+	return store.Do(func(result *store.StoreResult) {
+		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isOwner {
+			result.Data = true
+			return
+		}
+		isModerator, err := s.checkCreds(channelId, "moderator", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isModerator {
+			result.Data = true
+			return
+		}
+		isMember, err := s.checkCreds(channelId, "member", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result.Data = isMember
+	})
+}
+
+func (s SqlChannelStore) CheckReplierCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
+	query := prepareQuery(userId, azureRoles)
+	return store.Do(func(result *store.StoreResult) {
+		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isOwner {
+			result.Data = true
+			return
+		}
+		isModerator, err := s.checkCreds(channelId, "moderator", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isModerator {
+			result.Data = true
+			return
+		}
+		isMember, err := s.checkCreds(channelId, "member", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isMember {
+			result.Data = true
+			return
+		}
+		isReplier, err := s.checkCreds(channelId, "replier", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result.Data = isReplier
+	})
+}
+
+func (s SqlChannelStore) CheckViewerCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
+	query := prepareQuery(userId, azureRoles)
+	return store.Do(func(result *store.StoreResult) {
+		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isOwner {
+			result.Data = true
+			return
+		}
+		isModerator, err := s.checkCreds(channelId, "moderator", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isModerator {
+			result.Data = true
+			return
+		}
+		isMember, err := s.checkCreds(channelId, "member", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isMember {
+			result.Data = true
+			return
+		}
+		isReplier, err := s.checkCreds(channelId, "replier", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if isReplier {
+			result.Data = true
+			return
+		}
+		isViewer, err := s.checkCreds(channelId, "viewer", query, userId)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.CheckOwnerCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result.Data = isViewer
+	})
+}
+
+func (s SqlChannelStore) checkCreds(channelId, channelRole, query, userId string) (bool, error) {
+	var count int64
+	var err error
+	if userId == "" {
+		count, err = s.GetReplica().SelectInt(query, map[string]interface{}{"ChannelId": channelId, "ChannelRole": channelRole})
+	} else {
+		count, err = s.GetReplica().SelectInt(query, map[string]interface{}{"ChannelId": channelId, "ChannelRole": channelRole, "UserId": userId})
+	}
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (s SqlChannelStore) UpdateChannelCreds(channelId string, creds *model.ChannelCreds) store.StoreChannel {
+	return store.Do(func(result *store.StoreResult) {
+		s.updateUserCreds(creds.Owners.Users, channelId, "owner", result)
+		if result.Err == nil {
+			s.updateGroupCreds(creds.Owners.Groups, channelId, "owner", result)
+		}
+		if result.Err == nil {
+			s.updateUserCreds(creds.Moderators.Users, channelId, "moderator", result)
+		}
+		if result.Err == nil {
+			s.updateGroupCreds(creds.Moderators.Groups, channelId, "moderator", result)
+		}
+		if result.Err == nil {
+			s.updateUserCreds(creds.Members.Users, channelId, "member", result)
+		}
+		if result.Err == nil {
+			s.updateGroupCreds(creds.Members.Groups, channelId, "member", result)
+		}
+		if result.Err == nil {
+			s.updateUserCreds(creds.Repliers.Users, channelId, "replier", result)
+		}
+		if result.Err == nil {
+			s.updateGroupCreds(creds.Repliers.Groups, channelId, "replier", result)
+		}
+		if result.Err == nil {
+			s.updateUserCreds(creds.Viewers.Users, channelId, "viewer", result)
+		}
+		if result.Err == nil {
+			s.updateGroupCreds(creds.Viewers.Groups, channelId, "viewer", result)
+		}
+	})
+}
+
+func (s SqlChannelStore) updateUserCreds(credsList []string, channelId, channelRole string, result *store.StoreResult) {
+	for _, userId := range credsList {
+		err := s.updateCred(channelId, channelRole, userId, "")
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func (s SqlChannelStore) updateGroupCreds(credsList []string, channelId, channelRole string, result *store.StoreResult) {
+	for _, azureRole := range credsList {
+		err := s.updateCred(channelId, channelRole, "", azureRole)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func (s SqlChannelStore) updateCred(channelId, channelRole, userId, azureRole string) error {
+	transaction, err := s.GetMaster().Begin()
+	if err != nil {
+		return err
+	}
+
+	if _, err := transaction.Exec(`
+	INSERT INTO ChannelCreds
+		(ChannelId, UserId, AzureRole, ChannelRole)
+	VALUES
+	(:ChannelId, :UserId, :AzureRole, :ChannelRole)
+	ON DUPLICATE KEY UPDATE
+		UserId = :UserId,
+		AzureRole = :AzureRole,
+		ChannelRole = :ChannelRole
+	`, map[string]interface{}{
+		"UserId":      userId,
+		"AzureRole":   azureRole,
+		"ChannelRole": channelRole,
+	}); err != nil {
+		return errors.Wrap(err, "failed to insert public channel")
+	}
+	return nil
 }

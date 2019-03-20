@@ -87,6 +87,7 @@ func NewSqlUserStore(sqlStore SqlStore, metrics einterfaces.MetricsInterface) st
 		table.ColMap("FirstName").SetMaxSize(64)
 		table.ColMap("LastName").SetMaxSize(64)
 		table.ColMap("Roles").SetMaxSize(256)
+		table.ColMap("AzureRoles").SetMaxSize(256)
 		table.ColMap("Props").SetMaxSize(4000)
 		table.ColMap("NotifyProps").SetMaxSize(2000)
 		table.ColMap("Locale").SetMaxSize(5)
@@ -1443,5 +1444,17 @@ func (us SqlUserStore) InferSystemInstallDate() store.StoreChannel {
 			return
 		}
 		result.Data = createAt
+	})
+}
+
+func (us SqlUserStore) GetAzureRoles(userId string) store.StoreChannel {
+	return store.Do(func(result *store.StoreResult) {
+		var azureRoles string
+		_, err := us.GetReplica().Select(&azureRoles, "SELECT CreateAt FROM Users WHERE CreateAt IS NOT NULL ORDER BY CreateAt ASC LIMIT 1")
+		if err != nil {
+			result.Err = model.NewAppError("SqlUserStore.GetAzureRoles", "store.sql_user.get_azure_roles", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result.Data = azureRoles
 	})
 }

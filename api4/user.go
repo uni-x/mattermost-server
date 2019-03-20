@@ -126,7 +126,9 @@ func getUser(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if c.App.Session.UserId == user.Id {
+		authData := user.AuthData
 		user.Sanitize(map[string]bool{})
+		user.AuthData = authData
 	} else {
 		c.App.SanitizeProfile(user, c.IsSystemAdmin())
 	}

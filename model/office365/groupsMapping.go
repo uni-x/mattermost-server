@@ -4,7 +4,7 @@
 package oauthoffice365
 
 var groupsMapping = map[string]string{
-	"All_Staff":      "STAFF",
+	"All_Staff":      "TEACHER",
 	"SA_ADMINSTAFF":  "MODERATOR",
 	"Parent_CC":      "PARENT",
 	"Parent_CC_MC":   "PARENT",

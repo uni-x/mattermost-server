@@ -1012,3 +1012,33 @@ func (_m *ChannelStore) UpdateMember(member *model.ChannelMember) store.StoreCha
 
 	return r0
 }
+
+func (_m *ChannelStore) CheckOwnerCreds(channelId, userId string, userRoles []string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}
+
+func (_m *ChannelStore) CheckModeratorCreds(channelId, userId string, userRoles []string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}
+
+func (_m *ChannelStore) CheckMemberCreds(channelId, userId string, userRoles []string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}
+
+func (_m *ChannelStore) CheckReplierCreds(channelId, userId string, userRoles []string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}
+
+func (_m *ChannelStore) CheckViewerCreds(channelId, userId string, userRoles []string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}
+
+func (_m *ChannelStore) UpdateChannelCreds(channelId string, creds *model.ChannelCreds) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}

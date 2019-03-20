@@ -36,6 +36,8 @@ func (api *API) InitChannel() {
 	api.BaseRoutes.Channel.Handle("/stats", api.ApiSessionRequired(getChannelStats)).Methods("GET")
 	api.BaseRoutes.Channel.Handle("/pinned", api.ApiSessionRequired(getPinnedPosts)).Methods("GET")
 	api.BaseRoutes.Channel.Handle("/timezones", api.ApiSessionRequired(getChannelMembersTimezones)).Methods("GET")
+	api.BaseRoutes.Channel.Handle("/check-creds", api.ApiHandler(checkChannelCreds)).Methods("POST")
+	api.BaseRoutes.Channel.Handle("/update-creds", api.ApiHandler(updateChannelCreds)).Methods("POST")
 	api.BaseRoutes.ChannelForUser.Handle("/unread", api.ApiSessionRequired(getChannelUnread)).Methods("GET")
 
 	api.BaseRoutes.ChannelByName.Handle("", api.ApiSessionRequired(getChannelByName)).Methods("GET")
@@ -1231,6 +1233,47 @@ func updateChannelScheme(c *Context, w http.ResponseWriter, r *http.Request) {
 	_, err = c.App.UpdateChannelScheme(channel)
 	if err != nil {
 		c.Err = err
+		return
+	}
+
+	ReturnStatusOK(w)
+}
+
+func checkChannelCreds(c *Context, w http.ResponseWriter, r *http.Request) {
+	c.RequireChannelId()
+	if c.Err != nil {
+		return
+	}
+
+	credsRequest := model.ChannelCredsRequestFromJson(r.Body)
+	if credsRequest.ChannelRole == "" || (credsRequest.UserId == "" && len(credsRequest.AzureRoles) == 0) {
+		c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.check_channel_creds.error", nil, "Some request fields are empty", http.StatusBadRequest)
+		return
+	}
+	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, credsRequest.UserId, credsRequest.AzureRoles, credsRequest.ChannelRole)
+	if err != nil {
+		c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.check_channel_creds.error", nil, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var output string
+	if granted {
+		output = "true"
+	} else {
+		output = "false"
+	}
+	w.Write([]byte(output))
+}
+
+func updateChannelCreds(c *Context, w http.ResponseWriter, r *http.Request) {
+	c.RequireChannelId()
+	if c.Err != nil {
+		return
+	}
+
+	creds := model.ChannelCredsFromJson(r.Body)
+	err := c.App.UpdateChannelCreds(c.Params.ChannelId, creds)
+	if err != nil {
+		c.Err = model.NewAppError("Api4.UpdateChannelCreds", "api.channel.update_channel_creds.error", nil, err.Error(), http.StatusBadRequest)
 		return
 	}
 

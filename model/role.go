@@ -163,10 +163,9 @@ func IsValidRoleName(roleName string) bool {
 		return false
 	}
 
-	if strings.TrimLeft(roleName, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
+	if strings.TrimLeft(roleName, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != "" {
 		return false
 	}
-
 	return true
 }
 
@@ -331,7 +330,7 @@ func MakeDefaultRoles() map[string]*Role {
 							PERMISSION_MANAGE_SYSTEM_WIDE_OAUTH.Id,
 							PERMISSION_MANAGE_OTHERS_WEBHOOKS.Id,
 							PERMISSION_EDIT_OTHER_USERS.Id,
-							PERMISSION_EDIT_OTHERS_POSTS.Id,
+							//PERMISSION_EDIT_OTHERS_POSTS.Id,
 							PERMISSION_MANAGE_OAUTH.Id,
 							PERMISSION_INVITE_USER.Id,
 							PERMISSION_DELETE_POST.Id,

@@ -44,14 +44,14 @@ func userFromOffice365User(glu *Office365User) *model.User {
 	} else {
 		user.Email = glu.UserPrincipalName
 	}
-	roles := "system_user"
+	roles := ""
 	for _, group := range glu.Groups {
 		mmGroup, exists := groupsMapping[group]
 		if exists {
 			roles = roles + " " + mmGroup
 		}
 	}
-	user.Roles = roles
+	user.AzureRoles = roles
 	userId := glu.Id
 	user.AuthData = &userId
 	user.AuthService = model.USER_AUTH_SERVICE_OFFICE365

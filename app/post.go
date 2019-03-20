@@ -31,6 +31,31 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 	}
 	channel := result.Data.(*model.Channel)
 
+	channelId := channel.Id
+	userId := a.Session.UserId
+	user, e := a.GetUser(userId)
+	if e != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	azureRoles := strings.Fields(user.AzureRoles)
+
+	var channelRole string
+	if post.RootId != "" || post.ParentId != "" {
+		channelRole = "replier"
+	} else {
+		channelRole = "member"
+	}
+	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureRoles, channelRole)
+	if e != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	if !granted {
+		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't create such posts in this channel", http.StatusBadRequest)
+		return nil, err
+	}
+
 	if strings.HasPrefix(post.Type, model.POST_SYSTEM_MESSAGE_PREFIX) {
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.type"}, "", http.StatusBadRequest)
 		return nil, err
@@ -416,6 +441,45 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 	if result.Err != nil {
 		return nil, result.Err
 	}
+
+	userId := a.Session.UserId
+	if userId != post.UserId {
+		err := model.NewAppError("UpdatePost", "api.post.update_post.access_denied.app_error", nil, "id="+post.Id, http.StatusBadRequest)
+		return nil, err
+	}
+
+	result = <-a.Srv.Store.Channel().Get(post.ChannelId, true)
+	if result.Err != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	channel := result.Data.(*model.Channel)
+
+	channelId := channel.Id
+
+	user, e := a.GetUser(userId)
+	if e != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	azureRoles := strings.Fields(user.AzureRoles)
+
+	var channelRole string
+	if post.RootId != "" || post.ParentId != "" {
+		channelRole = "replier"
+	} else {
+		channelRole = "member"
+	}
+	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureRoles, channelRole)
+	if e != nil {
+		err := model.NewAppError("UpdatePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	if !granted {
+		err := model.NewAppError("UpdatePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
+		return nil, err
+	}
+
 	oldPost := result.Data.(*model.PostList).Posts[post.Id]
 
 	if oldPost == nil {
@@ -662,8 +726,44 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 	}
 	post := result.Data.(*model.Post)
 
+	result = <-a.Srv.Store.Channel().Get(post.ChannelId, true)
+	if result.Err != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	channel := result.Data.(*model.Channel)
+
+	channelId := channel.Id
+
 	if result := <-a.Srv.Store.Post().Delete(postId, model.GetMillis(), deleteByID); result.Err != nil {
 		return nil, result.Err
+	}
+	userId := a.Session.UserId
+	user, e := a.GetUser(userId)
+	if e != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	azureRoles := strings.Fields(user.AzureRoles)
+
+	var channelRole string
+	if post.UserId == userId {
+		if post.RootId != "" || post.ParentId != "" {
+			channelRole = "replier"
+		} else {
+			channelRole = "member"
+		}
+	} else {
+		channelRole = "moderator"
+	}
+	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureRoles, channelRole)
+	if e != nil {
+		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
+		return nil, err
+	}
+	if !granted {
+		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
+		return nil, err
 	}
 
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_DELETED, "", post.ChannelId, "", nil)
