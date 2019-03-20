@@ -437,18 +437,13 @@ func (a *App) SendEphemeralPost(userId string, post *model.Post) *model.Post {
 func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model.AppError) {
 	post.SanitizeProps()
 
-	result := <-a.Srv.Store.Post().Get(post.Id)
-	if result.Err != nil {
-		return nil, result.Err
-	}
-
 	userId := a.Session.UserId
 	if userId != post.UserId {
 		err := model.NewAppError("UpdatePost", "api.post.update_post.access_denied.app_error", nil, "id="+post.Id, http.StatusBadRequest)
 		return nil, err
 	}
 
-	result = <-a.Srv.Store.Channel().Get(post.ChannelId, true)
+	result := <-a.Srv.Store.Channel().Get(post.ChannelId, true)
 	if result.Err != nil {
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
 		return nil, err
@@ -480,6 +475,10 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 		return nil, err
 	}
 
+	result = <-a.Srv.Store.Post().Get(post.Id)
+	if result.Err != nil {
+		return nil, result.Err
+	}
 	oldPost := result.Data.(*model.PostList).Posts[post.Id]
 
 	if oldPost == nil {
