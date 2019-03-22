@@ -5,44 +5,33 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
+type ChannelCredsSet struct {
+	AzureGroups []string
+	Users       []string
+}
+
 type ChannelCreds struct {
-	ChannelId string
-	Owners    struct {
-		Groups []string
-		Users  []string
-	}
-	Moderators struct {
-		Groups []string
-		Users  []string
-	}
-	Members struct {
-		Groups []string
-		Users  []string
-	}
-	Repliers struct {
-		Groups []string
-		Users  []string
-	}
-	Viewers struct {
-		Groups []string
-		Users  []string
-	}
+	Owners     *ChannelCredsSet
+	Moderators *ChannelCredsSet
+	Members    *ChannelCredsSet
+	Repliers   *ChannelCredsSet
+	Viewers    *ChannelCredsSet
 }
 
 type ChannelCredElement struct {
 	ChannelId   string
 	UserId      string
-	AzureRole   string
+	AzureGroup  string
 	ChannelRole string
 }
 
 type ChannelCredsRequest struct {
-	ChannelId   string
 	UserId      string
-	AzureRoles  []string
+	AzureGroups []string
 	ChannelRole string
 }
 
@@ -54,6 +43,9 @@ func ChannelCredsRequestFromJson(data io.Reader) *ChannelCredsRequest {
 
 func ChannelCredsFromJson(data io.Reader) *ChannelCreds {
 	var o *ChannelCreds
-	json.NewDecoder(data).Decode(&o)
+	err := json.NewDecoder(data).Decode(&o)
+	if err != nil {
+		fmt.Println("ERROR", err)
+	}
 	return o
 }

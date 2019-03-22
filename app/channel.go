@@ -16,10 +16,10 @@ import (
 	"github.com/uni-x/mattermost-server/utils"
 )
 
+// display name, name. type, team_id
 func (a *App) CreateDefaultChannels(teamId string) ([]*model.Channel, *model.AppError) {
-	townSquare := &model.Channel{DisplayName: utils.T("api.channel.create_default_channels.town_square"), Name: "town-square", Type: model.CHANNEL_OPEN, TeamId: teamId}
-
-	if _, err := a.CreateChannel(townSquare, false); err != nil {
+	user, err := a.GetUser(a.Session.UserId)
+	if err != nil {
 		return nil, err
 	}
 
@@ -29,7 +29,20 @@ func (a *App) CreateDefaultChannels(teamId string) ([]*model.Channel, *model.App
 		return nil, err
 	}
 
-	channels := []*model.Channel{townSquare, offTopic}
+	creds := &model.ChannelCreds{
+		Owners: &model.ChannelCredsSet{
+			Users: []string{*user.AuthData},
+		},
+		Members: &model.ChannelCredsSet{
+			AzureGroups: []string{"ALL"},
+		},
+	}
+	result := <-a.Srv.Store.Channel().UpdateChannelCreds(offTopic.Id, creds)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+
+	channels := []*model.Channel{offTopic}
 	return channels, nil
 }
 
@@ -43,11 +56,9 @@ func (a *App) JoinDefaultChannels(teamId string, user *model.User, shouldBeAdmin
 		requestor = u.Data.(*model.User)
 	}
 
-	defaultChannelList := []string{"town-square"}
+	defaultChannelList := []string{"off-topic"}
 
-	if len(a.Config().TeamSettings.ExperimentalDefaultChannels) == 0 {
-		defaultChannelList = append(defaultChannelList, "off-topic")
-	} else {
+	if len(a.Config().TeamSettings.ExperimentalDefaultChannels) != 0 {
 		seenChannels := map[string]bool{}
 		for _, channelName := range a.Config().TeamSettings.ExperimentalDefaultChannels {
 			if !seenChannels[channelName] {
@@ -163,37 +174,45 @@ func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*mod
 	return rchannel, nil
 }
 
-func (a *App) CreateChannelWithUserAzureId(channelDisplayName, azureId string, creds *model.ChannelCreds) (*model.Channel, *model.AppError) {
-	result := <-a.Srv.Store.Team().GetAll()
+func (a *App) CreateChannelFromAzureApp(channelDisplayName, azureId string, creds *model.ChannelCreds) (*model.Channel, *model.AppError) {
+
+	result := <-a.Srv.Store.User().GetByAuth(&azureId, "office365")
+	if result.Err != nil {
+		return nil, result.Err
+	}
+
+	user := result.Data.(*model.User)
+
+	result = <-a.Srv.Store.Team().GetAll()
 	if result.Err != nil {
 		return nil, result.Err
 	}
 
 	teams := result.Data.([]*model.Team)
 	if len(teams) != 1 {
-		return nil, model.NewAppError("CreateChannelWithUserAzureId", "api.channel.create_channel.invalid_character.app_error", nil, "", http.StatusBadRequest)
+		return nil, model.NewAppError("CreateChannelFromAzureApp", "api.channel.create_channel.invalid_character.app_error", nil, "Should be only 1 team for this application", http.StatusBadRequest)
 	}
 
-	channelName := strings.ToLower(strings.Join(strings.Fields(channelDisplayName), "-"))
-
-	channel := &model.Channel{DisplayName: channelDisplayName, Name: channelName, Type: model.CHANNEL_OPEN, TeamId: teams[0].Id}
+	teamId := teams[0].Id
 
 	// Get total number of channels on current team
-	count, err := a.GetNumberOfChannelsOnTeam(channel.TeamId)
+	count, err := a.GetNumberOfChannelsOnTeam(teamId)
 	if err != nil {
 		return nil, err
 	}
 
 	if int64(count+1) > *a.Config().TeamSettings.MaxChannelsPerTeam {
-		return nil, model.NewAppError("CreateChannelWithUser", "api.channel.create_channel.max_channel_limit.app_error", map[string]interface{}{"MaxChannelsPerTeam": *a.Config().TeamSettings.MaxChannelsPerTeam}, "", http.StatusBadRequest)
+		return nil, model.NewAppError("CreateChannelFromAzureApp", "api.channel.create_channel.max_channel_limit.app_error", map[string]interface{}{"MaxChannelsPerTeam": *a.Config().TeamSettings.MaxChannelsPerTeam}, "", http.StatusBadRequest)
 	}
 
-	result = <-a.Srv.Store.User().GetByAuth(&azureId, "office365")
+	result = <-a.Srv.Store.Channel().ValidateCreds(creds)
 	if result.Err != nil {
 		return nil, result.Err
 	}
 
-	user := result.Data.(*model.User)
+	channelName := strings.ToLower(strings.Join(strings.Fields(channelDisplayName), "-"))
+	channel := &model.Channel{DisplayName: channelDisplayName, Name: channelName, Type: model.CHANNEL_OPEN, TeamId: teamId}
+
 	userId := user.Id
 
 	channel.CreatorId = userId
@@ -214,6 +233,28 @@ func (a *App) CreateChannelWithUserAzureId(channelDisplayName, azureId string, c
 	message.Add("channel_id", channel.Id)
 	message.Add("team_id", channel.TeamId)
 	a.Publish(message)
+
+	for _, authData := range creds.Owners.Users {
+		user, err := a.GetUserByAuth(&authData, "office365")
+		if err != nil {
+			return nil, result.Err
+		}
+		_, err = a.AddUserToChannel(user, channel)
+		if err != nil {
+			return nil, result.Err
+		}
+	}
+
+	for _, authData := range creds.Moderators.Users {
+		user, err := a.GetUserByAuth(&authData, "office365")
+		if err != nil {
+			return nil, result.Err
+		}
+		_, err = a.AddUserToChannel(user, channel)
+		if err != nil {
+			return nil, result.Err
+		}
+	}
 
 	return rchannel, nil
 }
@@ -1930,19 +1971,19 @@ func (a *App) FillInChannelsProps(channelList *model.ChannelList) *model.AppErro
 	return nil
 }
 
-func (a *App) CheckChannelCreds(channelId, userId string, azureRoles []string, channelRole string) (bool, *model.AppError) {
+func (a *App) CheckChannelCreds(channelId, userId string, azureGroups []string, channelRole string) (bool, *model.AppError) {
 	var result store.StoreResult
 	switch channelRole {
 	case "owner":
-		result = <-a.Srv.Store.Channel().CheckOwnerCreds(channelId, userId, azureRoles)
+		result = <-a.Srv.Store.Channel().CheckOwnerCreds(channelId, userId, azureGroups)
 	case "moderator":
-		result = <-a.Srv.Store.Channel().CheckModeratorCreds(channelId, userId, azureRoles)
+		result = <-a.Srv.Store.Channel().CheckModeratorCreds(channelId, userId, azureGroups)
 	case "member":
-		result = <-a.Srv.Store.Channel().CheckMemberCreds(channelId, userId, azureRoles)
+		result = <-a.Srv.Store.Channel().CheckMemberCreds(channelId, userId, azureGroups)
 	case "replier":
-		result = <-a.Srv.Store.Channel().CheckReplierCreds(channelId, userId, azureRoles)
+		result = <-a.Srv.Store.Channel().CheckReplierCreds(channelId, userId, azureGroups)
 	case "viewer":
-		result = <-a.Srv.Store.Channel().CheckViewerCreds(channelId, userId, azureRoles)
+		result = <-a.Srv.Store.Channel().CheckViewerCreds(channelId, userId, azureGroups)
 	}
 	if result.Err != nil {
 		return false, result.Err

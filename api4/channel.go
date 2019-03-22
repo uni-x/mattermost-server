@@ -13,9 +13,10 @@ import (
 func (api *API) InitChannel() {
 	api.BaseRoutes.Channels.Handle("", api.ApiSessionRequired(getAllChannels)).Methods("GET")
 	api.BaseRoutes.Channels.Handle("", api.ApiSessionRequired(createChannel)).Methods("POST")
+	api.BaseRoutes.Channels.Handle("/create-from-azure-app", api.ApiHandler(createChannelFromAzureApp)).Methods("POST")
 	api.BaseRoutes.Channels.Handle("/direct", api.ApiSessionRequired(createDirectChannel)).Methods("POST")
 	api.BaseRoutes.Channels.Handle("/search", api.ApiSessionRequired(searchAllChannels)).Methods("POST")
-	api.BaseRoutes.Channels.Handle("/group", api.ApiSessionRequired(createGroupChannel)).Methods("POST")
+	//	api.BaseRoutes.Channels.Handle("/group", api.ApiSessionRequired(createGroupChannel)).Methods("POST")
 	api.BaseRoutes.Channels.Handle("/members/{user_id:[A-Za-z0-9]+}/view", api.ApiSessionRequired(viewChannel)).Methods("POST")
 	api.BaseRoutes.Channels.Handle("/{channel_id:[A-Za-z0-9]+}/scheme", api.ApiSessionRequired(updateChannelScheme)).Methods("PUT")
 
@@ -1239,6 +1240,21 @@ func updateChannelScheme(c *Context, w http.ResponseWriter, r *http.Request) {
 	ReturnStatusOK(w)
 }
 
+func createChannelFromAzureApp(c *Context, w http.ResponseWriter, r *http.Request) {
+	createChannelData := model.ChannelCreateDataFromJson(r.Body)
+	if createChannelData == nil {
+		c.Err = model.NewAppError("Api4.CreateChannelFromAzureApp", "api.channel.create_channel_from_azure_app.error", nil, "Invalid channel data", http.StatusBadRequest)
+		return
+	}
+	channel, err := c.App.CreateChannelFromAzureApp(createChannelData.DisplayName, createChannelData.CreatorId, createChannelData.Credentials)
+	if err != nil {
+		c.Err = model.NewAppError("Api4.CreateChannelFromAzureApp", "api.channel.create_channel_from_azure_app.error", nil, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Write([]byte("{\"channelId\":\"" + channel.Id + "\"}"))
+}
+
 func checkChannelCreds(c *Context, w http.ResponseWriter, r *http.Request) {
 	c.RequireChannelId()
 	if c.Err != nil {
@@ -1246,11 +1262,11 @@ func checkChannelCreds(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	credsRequest := model.ChannelCredsRequestFromJson(r.Body)
-	if credsRequest.ChannelRole == "" || (credsRequest.UserId == "" && len(credsRequest.AzureRoles) == 0) {
+	if credsRequest.ChannelRole == "" || (credsRequest.UserId == "" && len(credsRequest.AzureGroups) == 0) {
 		c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.check_channel_creds.error", nil, "Some request fields are empty", http.StatusBadRequest)
 		return
 	}
-	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, credsRequest.UserId, credsRequest.AzureRoles, credsRequest.ChannelRole)
+	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, credsRequest.UserId, credsRequest.AzureGroups, credsRequest.ChannelRole)
 	if err != nil {
 		c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.check_channel_creds.error", nil, err.Error(), http.StatusBadRequest)
 		return

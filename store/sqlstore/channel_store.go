@@ -5,6 +5,7 @@ package sqlstore
 
 import (
 	"database/sql"
+	ne "errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -291,10 +292,10 @@ func NewSqlChannelStore(sqlStore SqlStore, metrics einterfaces.MetricsInterface)
 		tablem.ColMap("Roles").SetMaxSize(64)
 		tablem.ColMap("NotifyProps").SetMaxSize(2000)
 
-		tableCreds := db.AddTableWithName(model.ChannelCredElement{}, "ChannelCreds").SetKeys(false, "ChannelId", "UserId", "AzureRole")
-		tableCreds.ColMap("ChannelId").SetMaxSize(32)
-		tableCreds.ColMap("UserId").SetMaxSize(32)
-		tableCreds.ColMap("AzureRole").SetMaxSize(32)
+		tableCreds := db.AddTableWithName(model.ChannelCredElement{}, "ChannelCreds").SetKeys(false, "ChannelId", "UserId", "AzureGroup")
+		tableCreds.ColMap("ChannelId").SetMaxSize(26)
+		tableCreds.ColMap("UserId").SetMaxSize(64)
+		tableCreds.ColMap("AzureGroup").SetMaxSize(32)
 		tableCreds.ColMap("ChannelRole").SetMaxSize(32)
 
 		tablePublicChannels := db.AddTableWithName(publicChannel{}, "PublicChannels").SetKeys(false, "Id")
@@ -2563,18 +2564,19 @@ func (s SqlChannelStore) GetChannelMembersForExport(userId string, teamId string
 	})
 }
 
-var validRoles = map[string]bool{
+var validAzureGroups = map[string]bool{
+	"ALL":       true,
 	"STUDENT":   true,
 	"PARENT":    true,
 	"TEACHER":   true,
 	"MODERATOR": true,
 }
 
-func prepareQuery(userId string, azureRoles []string) string {
-	rolesOut := []string{}
-	for _, role := range azureRoles {
-		if _, ok := validRoles[role]; ok {
-			rolesOut = append(rolesOut, role)
+func prepareQuery(userId string, azureGroups []string) string {
+	groupsOut := []string{}
+	for _, group := range azureGroups {
+		if _, ok := validAzureGroups[group]; ok {
+			groupsOut = append(groupsOut, group)
 		}
 	}
 	query := `
@@ -2587,24 +2589,24 @@ func prepareQuery(userId string, azureRoles []string) string {
 	    AND
 	        ChannelRole = :ChannelRole
 	    AND `
-	if len(rolesOut) > 0 {
-		rolesQuery := ""
-		rolesLimit := len(rolesOut) - 1
-		for i, role := range rolesOut {
-			rolesQuery += "'" + role + "'"
-			if i < rolesLimit {
-				rolesQuery += ", "
+	if len(groupsOut) > 0 {
+		groupsQuery := ""
+		groupsLimit := len(groupsOut) - 1
+		for i, group := range groupsOut {
+			groupsQuery += "'" + group + "'"
+			if i < groupsLimit {
+				groupsQuery += ", "
 			}
 		}
 		if userId != "" {
 			query += `(
 	        UserId = :UserId
 		    OR
-		AzureRole IN (` + rolesQuery + `)
+		AzureGroup IN (` + groupsQuery + `)
 		)`
 		} else {
 			query += `
-		AzureRole IN (` + rolesQuery + `)
+		AzureGroup IN (` + groupsQuery + `)
 		`
 		}
 	} else {
@@ -2615,8 +2617,8 @@ func prepareQuery(userId string, azureRoles []string) string {
 	return query
 }
 
-func (s SqlChannelStore) CheckOwnerCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
-	query := prepareQuery(userId, azureRoles)
+func (s SqlChannelStore) CheckOwnerCreds(channelId, userId string, azureGroups []string) store.StoreChannel {
+	query := prepareQuery(userId, azureGroups)
 	return store.Do(func(result *store.StoreResult) {
 		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
 		if err != nil {
@@ -2627,8 +2629,8 @@ func (s SqlChannelStore) CheckOwnerCreds(channelId, userId string, azureRoles []
 	})
 }
 
-func (s SqlChannelStore) CheckModeratorCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
-	query := prepareQuery(userId, azureRoles)
+func (s SqlChannelStore) CheckModeratorCreds(channelId, userId string, azureGroups []string) store.StoreChannel {
+	query := prepareQuery(userId, azureGroups)
 	return store.Do(func(result *store.StoreResult) {
 		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
 		if err != nil {
@@ -2648,8 +2650,8 @@ func (s SqlChannelStore) CheckModeratorCreds(channelId, userId string, azureRole
 	})
 }
 
-func (s SqlChannelStore) CheckMemberCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
-	query := prepareQuery(userId, azureRoles)
+func (s SqlChannelStore) CheckMemberCreds(channelId, userId string, azureGroups []string) store.StoreChannel {
+	query := prepareQuery(userId, azureGroups)
 	return store.Do(func(result *store.StoreResult) {
 		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
 		if err != nil {
@@ -2678,8 +2680,8 @@ func (s SqlChannelStore) CheckMemberCreds(channelId, userId string, azureRoles [
 	})
 }
 
-func (s SqlChannelStore) CheckReplierCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
-	query := prepareQuery(userId, azureRoles)
+func (s SqlChannelStore) CheckReplierCreds(channelId, userId string, azureGroups []string) store.StoreChannel {
+	query := prepareQuery(userId, azureGroups)
 	return store.Do(func(result *store.StoreResult) {
 		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
 		if err != nil {
@@ -2717,8 +2719,8 @@ func (s SqlChannelStore) CheckReplierCreds(channelId, userId string, azureRoles 
 	})
 }
 
-func (s SqlChannelStore) CheckViewerCreds(channelId, userId string, azureRoles []string) store.StoreChannel {
-	query := prepareQuery(userId, azureRoles)
+func (s SqlChannelStore) CheckViewerCreds(channelId, userId string, azureGroups []string) store.StoreChannel {
+	query := prepareQuery(userId, azureGroups)
 	return store.Do(func(result *store.StoreResult) {
 		isOwner, err := s.checkCreds(channelId, "owner", query, userId)
 		if err != nil {
@@ -2781,33 +2783,84 @@ func (s SqlChannelStore) checkCreds(channelId, channelRole, query, userId string
 
 func (s SqlChannelStore) UpdateChannelCreds(channelId string, creds *model.ChannelCreds) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
-		s.updateUserCreds(creds.Owners.Users, channelId, "owner", result)
-		if result.Err == nil {
-			s.updateGroupCreds(creds.Owners.Groups, channelId, "owner", result)
+		count, err := s.GetReplica().SelectInt("SELECT COUNT(*) FROM Channels WHERE Id = :ChannelId", map[string]interface{}{"ChannelId": channelId})
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		if result.Err == nil {
+		if count == 0 {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, "no such channel", http.StatusInternalServerError)
+			return
+		}
+		err = s.validateCreds(creds)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		transaction, err := s.GetMaster().Begin()
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if _, err := transaction.Exec(`DELETE FROM ChannelCreds WHERE ChannelId = :ChannelId`, map[string]interface{}{
+			"ChannelId": channelId,
+		}); err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := transaction.Commit(); err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if creds.Owners != nil {
+			s.updateUserCreds(creds.Owners.Users, channelId, "owner", result)
+			if result.Err != nil {
+				return
+			}
+			s.updateGroupCreds(creds.Owners.AzureGroups, channelId, "owner", result)
+			if result.Err != nil {
+				return
+			}
+		}
+		if creds.Moderators != nil {
 			s.updateUserCreds(creds.Moderators.Users, channelId, "moderator", result)
+			if result.Err != nil {
+				return
+			}
+			s.updateGroupCreds(creds.Moderators.AzureGroups, channelId, "moderator", result)
+			if result.Err != nil {
+				return
+			}
 		}
-		if result.Err == nil {
-			s.updateGroupCreds(creds.Moderators.Groups, channelId, "moderator", result)
-		}
-		if result.Err == nil {
+		if creds.Members != nil {
 			s.updateUserCreds(creds.Members.Users, channelId, "member", result)
+			if result.Err != nil {
+				return
+			}
+			s.updateGroupCreds(creds.Members.AzureGroups, channelId, "member", result)
+			if result.Err != nil {
+				return
+			}
 		}
-		if result.Err == nil {
-			s.updateGroupCreds(creds.Members.Groups, channelId, "member", result)
-		}
-		if result.Err == nil {
+		if creds.Repliers != nil {
 			s.updateUserCreds(creds.Repliers.Users, channelId, "replier", result)
+			if result.Err != nil {
+				return
+			}
+			s.updateGroupCreds(creds.Repliers.AzureGroups, channelId, "replier", result)
+			if result.Err != nil {
+				return
+			}
 		}
-		if result.Err == nil {
-			s.updateGroupCreds(creds.Repliers.Groups, channelId, "replier", result)
-		}
-		if result.Err == nil {
+		if creds.Viewers != nil {
 			s.updateUserCreds(creds.Viewers.Users, channelId, "viewer", result)
-		}
-		if result.Err == nil {
-			s.updateGroupCreds(creds.Viewers.Groups, channelId, "viewer", result)
+			if result.Err != nil {
+				return
+			}
+			s.updateGroupCreds(creds.Viewers.AzureGroups, channelId, "viewer", result)
 		}
 	})
 }
@@ -2823,8 +2876,8 @@ func (s SqlChannelStore) updateUserCreds(credsList []string, channelId, channelR
 }
 
 func (s SqlChannelStore) updateGroupCreds(credsList []string, channelId, channelRole string, result *store.StoreResult) {
-	for _, azureRole := range credsList {
-		err := s.updateCred(channelId, channelRole, "", azureRole)
+	for _, azureGroup := range credsList {
+		err := s.updateCred(channelId, channelRole, "", azureGroup)
 		if err != nil {
 			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
 			return
@@ -2832,27 +2885,94 @@ func (s SqlChannelStore) updateGroupCreds(credsList []string, channelId, channel
 	}
 }
 
-func (s SqlChannelStore) updateCred(channelId, channelRole, userId, azureRole string) error {
+func (s SqlChannelStore) updateCred(channelId, channelRole, userId, azureGroup string) error {
 	transaction, err := s.GetMaster().Begin()
 	if err != nil {
 		return err
 	}
-
 	if _, err := transaction.Exec(`
-	INSERT INTO ChannelCreds
-		(ChannelId, UserId, AzureRole, ChannelRole)
-	VALUES
-	(:ChannelId, :UserId, :AzureRole, :ChannelRole)
-	ON DUPLICATE KEY UPDATE
-		UserId = :UserId,
-		AzureRole = :AzureRole,
-		ChannelRole = :ChannelRole
-	`, map[string]interface{}{
+		INSERT INTO ChannelCreds
+		 (ChannelId, UserId, AzureGroup, ChannelRole)
+		VALUES
+		 (:ChannelId, :UserId, :AzureGroup, :ChannelRole)
+		`, map[string]interface{}{
+		"ChannelId":   channelId,
 		"UserId":      userId,
-		"AzureRole":   azureRole,
+		"AzureGroup":  azureGroup,
 		"ChannelRole": channelRole,
 	}); err != nil {
-		return errors.Wrap(err, "failed to insert public channel")
+		return errors.Wrap(err, "failed to update credentials")
+	}
+
+	if err := transaction.Commit(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s SqlChannelStore) ValidateCreds(creds *model.ChannelCreds) store.StoreChannel {
+	return store.Do(func(result *store.StoreResult) {
+		err := s.validateCreds(creds)
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.ValidateCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+		} else {
+			result.Err = nil
+		}
+	})
+}
+
+func (s SqlChannelStore) validateCreds(creds *model.ChannelCreds) error {
+	if creds.Owners != nil {
+		err := s.validateChannelRole(creds.Owners)
+		if err != nil {
+			return err
+		}
+	}
+	if creds.Moderators != nil {
+		err := s.validateChannelRole(creds.Moderators)
+		if err != nil {
+			return err
+		}
+	}
+	if creds.Members != nil {
+		err := s.validateChannelRole(creds.Members)
+		if err != nil {
+			return err
+		}
+	}
+	if creds.Repliers != nil {
+		err := s.validateChannelRole(creds.Repliers)
+		if err != nil {
+			return err
+		}
+	}
+	if creds.Viewers != nil {
+		err := s.validateChannelRole(creds.Viewers)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var noSuchGroup = ne.New("no such group")
+var noSuchUser = ne.New("no such user")
+
+func (s SqlChannelStore) validateChannelRole(set *model.ChannelCredsSet) error {
+	for _, group := range set.AzureGroups {
+		if _, ok := validAzureGroups[group]; !ok {
+			return noSuchGroup
+		}
+	}
+	for _, authData := range set.Users {
+		count, err := s.GetReplica().SelectInt("SELECT COUNT(*) FROM Users WHERE AuthData = :AuthData", map[string]interface{}{"AuthData": authData})
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return noSuchUser
+		}
 	}
 	return nil
 }

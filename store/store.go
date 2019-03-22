@@ -187,12 +187,13 @@ type ChannelStore interface {
 	GetAllChannelsForExportAfter(limit int, afterId string) StoreChannel
 	GetChannelMembersForExport(userId string, teamId string) StoreChannel
 	RemoveAllDeactivatedMembers(channelId string) StoreChannel
-	CheckOwnerCreds(channelId, userId string, azureRoles []string) StoreChannel
-	CheckModeratorCreds(channelId, userId string, azureRoles []string) StoreChannel
-	CheckMemberCreds(channelId, userId string, azureRoles []string) StoreChannel
-	CheckReplierCreds(channelId, userId string, azureRoles []string) StoreChannel
-	CheckViewerCreds(channelId, userId string, azureRoles []string) StoreChannel
+	CheckOwnerCreds(channelId, userId string, azureGroups []string) StoreChannel
+	CheckModeratorCreds(channelId, userId string, azureGroups []string) StoreChannel
+	CheckMemberCreds(channelId, userId string, azureGroups []string) StoreChannel
+	CheckReplierCreds(channelId, userId string, azureGroups []string) StoreChannel
+	CheckViewerCreds(channelId, userId string, azureGroups []string) StoreChannel
 	UpdateChannelCreds(channelId string, creds *model.ChannelCreds) StoreChannel
+	ValidateCreds(creds *model.ChannelCreds) StoreChannel
 }
 
 type ChannelMemberHistoryStore interface {
@@ -291,7 +292,7 @@ type UserStore interface {
 	ClearAllCustomRoleAssignments() StoreChannel
 	InferSystemInstallDate() StoreChannel
 	GetAllAfter(limit int, afterId string) StoreChannel
-	GetAzureRoles(userId string) StoreChannel
+	GetAzureGroups(userId string) StoreChannel
 }
 
 type SessionStore interface {

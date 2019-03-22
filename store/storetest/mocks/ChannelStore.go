@@ -1042,3 +1042,8 @@ func (_m *ChannelStore) UpdateChannelCreds(channelId string, creds *model.Channe
 	var r0 store.StoreChannel
 	return r0
 }
+
+func (s *ChannelStore) ValidateCreds(creds *model.ChannelCreds) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}

@@ -38,7 +38,7 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
 		return nil, err
 	}
-	azureRoles := strings.Fields(user.AzureRoles)
+	azureGroups := strings.Fields(user.AzureGroups)
 
 	var channelRole string
 	if post.RootId != "" || post.ParentId != "" {
@@ -46,7 +46,7 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 	} else {
 		channelRole = "member"
 	}
-	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureRoles, channelRole)
+	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, channelRole)
 	if e != nil {
 		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
 		return nil, err
@@ -457,7 +457,7 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
 		return nil, err
 	}
-	azureRoles := strings.Fields(user.AzureRoles)
+	azureGroups := strings.Fields(user.AzureGroups)
 
 	var channelRole string
 	if post.RootId != "" || post.ParentId != "" {
@@ -465,7 +465,7 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 	} else {
 		channelRole = "member"
 	}
-	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureRoles, channelRole)
+	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, channelRole)
 	if e != nil {
 		err := model.NewAppError("UpdatePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
 		return nil, err
@@ -743,7 +743,7 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
 		return nil, err
 	}
-	azureRoles := strings.Fields(user.AzureRoles)
+	azureGroups := strings.Fields(user.AzureGroups)
 
 	var channelRole string
 	if post.UserId == userId {
@@ -755,7 +755,7 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 	} else {
 		channelRole = "moderator"
 	}
-	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureRoles, channelRole)
+	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, channelRole)
 	if e != nil {
 		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
 		return nil, err
