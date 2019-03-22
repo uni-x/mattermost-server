@@ -130,6 +130,7 @@ func (a *App) postJoinMessageForDefaultChannel(user *model.User, requestor *mode
 }
 
 func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*model.Channel, *model.AppError) {
+	return nil, nil
 	if channel.IsGroupOrDirect() {
 		return nil, model.NewAppError("CreateChannelWithUser", "api.channel.create_channel.direct_channel.app_error", nil, "", http.StatusBadRequest)
 	}
@@ -261,6 +262,7 @@ func (a *App) CreateChannelFromAzureApp(channelDisplayName, azureId string, cred
 
 // RenameChannel is used to rename the channel Name and the DisplayName fields
 func (a *App) RenameChannel(channel *model.Channel, newChannelName string, newDisplayName string) (*model.Channel, *model.AppError) {
+	return nil, nil
 	if channel.Type == model.CHANNEL_DIRECT {
 		return nil, model.NewAppError("RenameChannel", "api.channel.rename_channel.cant_rename_direct_messages.app_error", nil, "", http.StatusBadRequest)
 	}
@@ -361,18 +363,20 @@ func (a *App) GetOrCreateDirectChannel(userId, otherUserId string) (*model.Chann
 }
 
 func (a *App) createDirectChannel(userId string, otherUserId string) (*model.Channel, *model.AppError) {
-	uc1 := a.Srv.Store.User().Get(userId)
-	uc2 := a.Srv.Store.User().Get(otherUserId)
 
-	if result := <-uc1; result.Err != nil {
+	result := <-a.Srv.Store.User().Get(userId)
+	if result.Err != nil {
 		return nil, model.NewAppError("CreateDirectChannel", "api.channel.create_direct_channel.invalid_user.app_error", nil, userId, http.StatusBadRequest)
 	}
+	uc1 := result.Data.(*model.User)
 
-	if result := <-uc2; result.Err != nil {
+	result = <-a.Srv.Store.User().Get(otherUserId)
+	if result.Err != nil {
 		return nil, model.NewAppError("CreateDirectChannel", "api.channel.create_direct_channel.invalid_user.app_error", nil, otherUserId, http.StatusBadRequest)
 	}
+	uc2 := result.Data.(*model.User)
 
-	result := <-a.Srv.Store.Channel().CreateDirectChannel(userId, otherUserId)
+	result = <-a.Srv.Store.Channel().CreateDirectChannel(userId, otherUserId)
 	if result.Err != nil {
 		if result.Err.Id == store.CHANNEL_EXISTS_ERROR {
 			return result.Data.(*model.Channel), result.Err
@@ -387,6 +391,16 @@ func (a *App) createDirectChannel(userId string, otherUserId string) (*model.Cha
 	}
 	if result := <-a.Srv.Store.ChannelMemberHistory().LogJoinEvent(otherUserId, channel.Id, model.GetMillis()); result.Err != nil {
 		mlog.Warn(fmt.Sprintf("Failed to update ChannelMemberHistory table %v", result.Err))
+	}
+
+	creds := &model.ChannelCreds{
+		Owners: &model.ChannelCredsSet{
+			Users: []string{*uc1.AuthData, *uc2.AuthData},
+		},
+	}
+	result = <-a.Srv.Store.Channel().UpdateChannelCreds(channel.Id, creds)
+	if result.Err != nil {
+		return nil, result.Err
 	}
 
 	return channel, nil
@@ -604,6 +618,19 @@ func (a *App) RestoreChannel(channel *model.Channel) (*model.Channel, *model.App
 }
 
 func (a *App) PatchChannel(channel *model.Channel, patch *model.ChannelPatch, userId string) (*model.Channel, *model.AppError) {
+	user, e := a.GetUser(userId)
+	if e != nil {
+		return nil, e
+	}
+
+	isOwner, e := a.CheckChannelCreds(channel.Id, *user.AuthData, []string{}, "owner")
+	if e != nil {
+		return nil, e
+	}
+	if !isOwner {
+		return nil, nil
+	}
+
 	oldChannelDisplayName := channel.DisplayName
 	oldChannelHeader := channel.Header
 	oldChannelPurpose := channel.Purpose
