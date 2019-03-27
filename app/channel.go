@@ -645,7 +645,6 @@ func (a *App) RestoreChannel(channel *model.Channel, userId string) (*model.Chan
 
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_CHANNEL_RESTORED, channel.TeamId, "", "", nil)
 	message.Add("channel_id", channel.Id)
-	message.Add("channel_name", channel.Name)
 	a.Publish(message)
 
 	return channel, nil
