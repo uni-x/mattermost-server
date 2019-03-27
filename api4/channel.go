@@ -5,6 +5,7 @@ package api4
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/uni-x/mattermost-server/mlog"
 	"github.com/uni-x/mattermost-server/model"
@@ -294,14 +295,21 @@ func restoreChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.Err = err
 		return
 	}
-	teamId := channel.TeamId
 
-	if !c.App.SessionHasPermissionToTeam(c.App.Session, teamId, model.PERMISSION_MANAGE_TEAM) {
-		c.SetPermissionError(model.PERMISSION_MANAGE_TEAM)
+	userId := c.App.Session.UserId
+	user, err := c.App.GetUser(userId)
+	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, *user.AuthData, strings.Fields(user.AzureGroups), "owner")
+	if err != nil {
+		c.Err = model.NewAppError("Api4.RestoreChannel", "api.channel.restore_channel.error", nil, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	channel, err = c.App.RestoreChannel(channel)
+	if !granted {
+		c.Err = model.NewAppError("Api4.RestoreChannel", "api.channel.restore_channel.error", nil, "access denied", http.StatusBadRequest)
+		return
+	}
+
+	channel, err = c.App.RestoreChannel(channel, c.App.Session.UserId)
 	if err != nil {
 		c.Err = err
 		return

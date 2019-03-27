@@ -609,11 +609,45 @@ func (a *App) postChannelPrivacyMessage(user *model.User, channel *model.Channel
 	return nil
 }
 
-func (a *App) RestoreChannel(channel *model.Channel) (*model.Channel, *model.AppError) {
+func (a *App) RestoreChannel(channel *model.Channel, userId string) (*model.Channel, *model.AppError) {
 	result := <-a.Srv.Store.Channel().Restore(channel.Id, model.GetMillis())
 	if result.Err != nil {
 		return nil, result.Err
 	}
+
+	var user *model.User
+	if userId != "" {
+		uc := a.Srv.Store.User().Get(userId)
+		uresult := <-uc
+		if uresult.Err != nil {
+			return nil, uresult.Err
+		}
+		user = uresult.Data.(*model.User)
+	}
+
+	if user != nil {
+		T := utils.GetUserTranslations(user.Locale)
+
+		post := &model.Post{
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf(T("api.channel.restore_channel.restored"), user.Username),
+			Type:      model.POST_CHANNEL_RESTORED,
+			UserId:    userId,
+			Props: model.StringInterface{
+				"username": user.Username,
+			},
+		}
+
+		if _, err := a.CreatePost(post, channel, false); err != nil {
+			mlog.Error(fmt.Sprintf("Failed to post archive message %v", err))
+		}
+	}
+
+	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_CHANNEL_RESTORED, channel.TeamId, "", "", nil)
+	message.Add("channel_id", channel.Id)
+	message.Add("channel_name", channel.Name)
+	a.Publish(message)
+
 	return channel, nil
 }
 
@@ -890,6 +924,7 @@ func (a *App) DeleteChannel(channel *model.Channel, userId string) *model.AppErr
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_CHANNEL_DELETED, channel.TeamId, "", "", nil)
 	message.Add("channel_id", channel.Id)
 	message.Add("delete_at", deleteAt)
+	message.Add("user_id", userId)
 	a.Publish(message)
 
 	return nil

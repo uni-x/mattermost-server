@@ -236,6 +236,10 @@
     "translation": "Unable to delete direct or group message channels"
   },
   {
+    "id": "api.channel.restore_channel.restored",
+    "translation": "%v restored the channel."
+  },
+  {
     "id": "api.channel.join_channel.permissions.app_error",
     "translation": "You do not have the appropriate permissions"
   },
