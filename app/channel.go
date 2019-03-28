@@ -442,12 +442,35 @@ func (a *App) CreateGroupChannel(userIds []string, creatorId string) (*model.Cha
 		return nil, err
 	}
 
+	owners := []string{}
+	members := []string{}
+
 	for _, userId := range userIds {
+		user, err := a.GetUser(userId)
+		if err != nil {
+			return nil, err
+		}
 		if userId == creatorId {
+			owners = append(owners, *user.AuthData)
 			a.WaitForChannelMembership(channel.Id, creatorId)
+		} else {
+			members = append(members, *user.AuthData)
 		}
 
 		a.InvalidateCacheForUser(userId)
+	}
+
+	creds := &model.ChannelCreds{
+		Owners: &model.ChannelCredsSet{
+			Users: owners,
+		},
+		Members: &model.ChannelCredsSet{
+			Users: members,
+		},
+	}
+	result := <-a.Srv.Store.Channel().UpdateChannelCreds(channel.Id, creds)
+	if result.Err != nil {
+		return nil, result.Err
 	}
 
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_GROUP_ADDED, "", channel.Id, "", nil)
@@ -1500,11 +1523,6 @@ func (a *App) LeaveChannel(channelId string, userId string) *model.AppError {
 		return err
 	}
 
-	if channel.Type == model.CHANNEL_PRIVATE && membersCount == 1 {
-		err := model.NewAppError("LeaveChannel", "api.channel.leave.last_member.app_error", nil, "userId="+user.Id, http.StatusBadRequest)
-		return err
-	}
-
 	if err := a.removeUserFromChannel(userId, userId, channel); err != nil {
 		return err
 	}
@@ -1634,6 +1652,19 @@ func (a *App) removeUserFromChannel(userIdToRemove string, removerUserId string,
 				return true
 			}, plugin.UserHasLeftChannelId)
 		})
+	}
+
+	result := <-a.Srv.Store.Channel().CheckIfEmpty(channel.Id)
+	if result.Err != nil {
+		return result.Err
+	}
+
+	empty := result.Data.(bool)
+	if empty {
+		err = a.PermanentDeleteChannel(channel)
+		if err != nil {
+			return err
+		}
 	}
 
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_USER_REMOVED, "", channel.Id, "", nil)
@@ -1864,6 +1895,10 @@ func (a *App) PermanentDeleteChannel(channel *model.Channel) *model.AppError {
 	}
 
 	if result := <-a.Srv.Store.Webhook().PermanentDeleteOutgoingByChannel(channel.Id); result.Err != nil {
+		return result.Err
+	}
+
+	if result := <-a.Srv.Store.Channel().ClearChannelCreds(channel.Id); result.Err != nil {
 		return result.Err
 	}
 

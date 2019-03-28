@@ -2257,6 +2257,18 @@ func (s SqlChannelStore) performSearch(searchQuery string, term string, paramete
 	return result
 }
 
+func (s SqlChannelStore) CheckIfEmpty(channelId string) store.StoreChannel {
+	return store.Do(func(result *store.StoreResult) {
+		count, err := s.GetReplica().SelectInt("SELECT COUNT(*) from ChannelMembers WHERE ChannelId = :ChannelId", map[string]interface{}{"ChannelId": channelId})
+		if err != nil {
+			result.Err = model.NewAppError("SqlChannelStore.CheckIfEmpty", "store.sql_channel.check_if_empty.app_error", nil, "channel_id="+channelId+","+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		result.Data = count == 0
+	})
+}
+
 func (s SqlChannelStore) GetMembersByIds(channelId string, userIds []string) store.StoreChannel {
 	return store.Do(func(result *store.StoreResult) {
 		var dbMembers channelMemberWithSchemeRolesList
@@ -2858,6 +2870,36 @@ func (s SqlChannelStore) UpdateChannelCreds(channelId string, creds *model.Chann
 				return
 			}
 			s.updateGroupCreds(creds.Viewers.AzureGroups, channelId, "viewer", result)
+		}
+	})
+}
+
+func (s SqlChannelStore) ClearChannelCreds(channelId string) store.StoreChannel {
+	return store.Do(func(result *store.StoreResult) {
+		count, err := s.GetReplica().SelectInt("SELECT COUNT(*) FROM Channels WHERE Id = :ChannelId", map[string]interface{}{"ChannelId": channelId})
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.ClearChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if count == 0 {
+			result.Err = model.NewAppError("SqlTeamStore.ClearChannelCreds", "stub", nil, "no such channel", http.StatusInternalServerError)
+			return
+		}
+		transaction, err := s.GetMaster().Begin()
+		if err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if _, err := transaction.Exec(`DELETE FROM ChannelCreds WHERE ChannelId = :ChannelId`, map[string]interface{}{
+			"ChannelId": channelId,
+		}); err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := transaction.Commit(); err != nil {
+			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			return
 		}
 	})
 }

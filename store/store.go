@@ -193,7 +193,9 @@ type ChannelStore interface {
 	CheckReplierCreds(channelId, userId string, azureGroups []string) StoreChannel
 	CheckViewerCreds(channelId, userId string, azureGroups []string) StoreChannel
 	UpdateChannelCreds(channelId string, creds *model.ChannelCreds) StoreChannel
+	ClearChannelCreds(channelId string) StoreChannel
 	ValidateCreds(creds *model.ChannelCreds) StoreChannel
+	CheckIfEmpty(channelId string) StoreChannel
 }
 
 type ChannelMemberHistoryStore interface {

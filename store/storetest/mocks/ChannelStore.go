@@ -1043,7 +1043,17 @@ func (_m *ChannelStore) UpdateChannelCreds(channelId string, creds *model.Channe
 	return r0
 }
 
+func (s *ChannelStore) ClearChannelCreds(channelId string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}
+
 func (s *ChannelStore) ValidateCreds(creds *model.ChannelCreds) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}
+
+func (s *ChannelStore) CheckIfEmpty(channelId string) store.StoreChannel {
 	var r0 store.StoreChannel
 	return r0
 }
