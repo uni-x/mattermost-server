@@ -6,6 +6,7 @@ package app
 import (
 	"bytes"
 	b64 "encoding/base64"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"image"
@@ -106,6 +107,27 @@ func (a *App) CreateUsersFromAzureApp(usersData io.Reader) *model.AppError {
 		_, err := a.createOAuthUser("office365", user)
 		if err != nil {
 			return model.NewAppError("CreateUsersFromAzureApp", "api.user.create_users_from_azure_app.app_error", nil, "cannot create user", http.StatusNotImplemented)
+		}
+	}
+	return nil
+}
+
+func (a *App) DeleteUsersFromAzureApp(data io.Reader) *model.AppError {
+	decoder := json.NewDecoder(data)
+	var userIds []string
+	err := decoder.Decode(&userIds)
+	if err != nil {
+		return model.NewAppError("DeleteUsersFromAzureApp", "api.user.delete_users_from_azure_app.app_error", nil, err.Error(), http.StatusNotImplemented)
+	}
+
+	for _, userId := range userIds {
+		user, err := a.GetUserByAuth(&userId, "office365")
+		if err != nil {
+			return err
+		}
+		err = a.PermanentDeleteUser(user)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

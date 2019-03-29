@@ -20,6 +20,7 @@ func (api *API) InitUser() {
 	api.BaseRoutes.Users.Handle("", api.ApiHandler(createUser)).Methods("POST")
 	api.BaseRoutes.Users.Handle("", api.ApiSessionRequired(getUsers)).Methods("GET")
 	api.BaseRoutes.Users.Handle("/create-from-azure-app", api.ApiHandler(createUsersFromAzureApp)).Methods("POST")
+	api.BaseRoutes.Users.Handle("/delete-from-azure-app", api.ApiHandler(deleteUsersFromAzureApp)).Methods("POST")
 	api.BaseRoutes.Users.Handle("/ids", api.ApiSessionRequired(getUsersByIds)).Methods("POST")
 	api.BaseRoutes.Users.Handle("/usernames", api.ApiSessionRequired(getUsersByNames)).Methods("POST")
 	api.BaseRoutes.Users.Handle("/search", api.ApiSessionRequired(searchUsers)).Methods("POST")
@@ -108,6 +109,13 @@ func createUser(c *Context, w http.ResponseWriter, r *http.Request) {
 
 func createUsersFromAzureApp(c *Context, w http.ResponseWriter, r *http.Request) {
 	err := c.App.CreateUsersFromAzureApp(r.Body)
+	if err != nil {
+		c.Err = err
+	}
+}
+
+func deleteUsersFromAzureApp(c *Context, w http.ResponseWriter, r *http.Request) {
+	err := c.App.DeleteUsersFromAzureApp(r.Body)
 	if err != nil {
 		c.Err = err
 	}
