@@ -1499,7 +1499,7 @@ func (a *App) postJoinTeamMessage(user *model.User, channel *model.Channel) *mod
 func (a *App) LeaveChannel(channelId string, userId string) *model.AppError {
 	sc := a.Srv.Store.Channel().Get(channelId, true)
 	uc := a.Srv.Store.User().Get(userId)
-	ccm := a.Srv.Store.Channel().GetMemberCount(channelId, false)
+	//	ccm := a.Srv.Store.Channel().GetMemberCount(channelId, false)
 
 	cresult := <-sc
 	if cresult.Err != nil {
@@ -1509,14 +1509,14 @@ func (a *App) LeaveChannel(channelId string, userId string) *model.AppError {
 	if uresult.Err != nil {
 		return cresult.Err
 	}
-	ccmresult := <-ccm
-	if ccmresult.Err != nil {
-		return ccmresult.Err
-	}
+	/*	ccmresult := <-ccm
+		if ccmresult.Err != nil {
+			return ccmresult.Err
+		}*/
 
 	channel := cresult.Data.(*model.Channel)
 	user := uresult.Data.(*model.User)
-	membersCount := ccmresult.Data.(int64)
+	//membersCount := ccmresult.Data.(int64)
 
 	if channel.IsGroupOrDirect() {
 		err := model.NewAppError("LeaveChannel", "api.channel.leave.direct.app_error", nil, "", http.StatusBadRequest)

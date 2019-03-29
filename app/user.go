@@ -92,6 +92,25 @@ func (a *App) CreateUserWithToken(user *model.User, tokenId string) (*model.User
 	return ruser, nil
 }
 
+func (a *App) CreateUsersFromAzureApp(usersData io.Reader) *model.AppError {
+	provider := einterfaces.GetOauthProvider("office365")
+	if provider == nil {
+		return model.NewAppError("CreateOAuthUser", "api.user.create_oauth_users.not_available.app_error", map[string]interface{}{"Service": "Office365"}, "", http.StatusNotImplemented)
+	}
+
+	users, err := provider.GetUsersFromJson(usersData)
+	if err != nil {
+		return model.NewAppError("CreateUsersFromAzureApp", "api.user.create_users_from_azure_app.app_error", nil, "no such provider", http.StatusNotImplemented)
+	}
+	for _, user := range users {
+		_, err := a.createOAuthUser("office365", user)
+		if err != nil {
+			return model.NewAppError("CreateUsersFromAzureApp", "api.user.create_users_from_azure_app.app_error", nil, "cannot create user", http.StatusNotImplemented)
+		}
+	}
+	return nil
+}
+
 func (a *App) CreateUserWithInviteId(user *model.User, inviteId string) (*model.User, *model.AppError) {
 	if err := a.IsUserSignUpAllowed(); err != nil {
 		return nil, err
@@ -270,6 +289,11 @@ func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string,
 		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.create.app_error", map[string]interface{}{"Service": service}, "", http.StatusInternalServerError)
 	}
 
+	return a.createOAuthUser(service, user)
+}
+
+func (a *App) createOAuthUser(service string, user *model.User) (*model.User, *model.AppError) {
+
 	suchan := a.Srv.Store.User().GetByAuth(user.AuthData, service)
 	euchan := a.Srv.Store.User().GetByEmail(user.Email)
 
@@ -305,19 +329,6 @@ func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string,
 		panic(err)
 		return nil, err
 	}
-	/*
-		if len(teamId) > 0 {
-			err = a.AddUserToTeamByTeamId(teamId, user)
-			if err != nil {
-				return nil, err
-			}
-
-			err = a.AddDirectChannels(teamId, user)
-			if err != nil {
-				mlog.Error(err.Error())
-			}
-		}
-	*/
 	return ruser, nil
 }
 

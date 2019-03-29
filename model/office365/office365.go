@@ -84,7 +84,7 @@ func (glu *Office365User) IsValid() bool {
 	if glu.Id == "" {
 		return false
 	}
-	if len(glu.UserPrincipalName) == 0 {
+	if len(glu.Mail) == 0 && len(glu.UserPrincipalName) == 0 {
 		return false
 	}
 	return true
@@ -100,4 +100,22 @@ func (m *Office365Provider) GetUserFromJson(data io.Reader, groups []string) *mo
 		return userFromOffice365User(glu)
 	}
 	return &model.User{}
+}
+
+func (m *Office365Provider) GetUsersFromJson(data io.Reader) ([]*model.User, error) {
+	decoder := json.NewDecoder(data)
+	var glus []Office365User
+	var users []*model.User
+	err := decoder.Decode(&glus)
+	if err != nil {
+		return nil, err
+	} else {
+		for _, glu := range glus {
+			user := userFromOffice365User(&glu)
+			if user != nil {
+				users = append(users, user)
+			}
+		}
+	}
+	return users, nil
 }

@@ -560,6 +560,8 @@ func (a *App) LoginByOAuth(service string, userData io.Reader, teamId string, gr
 		user.Roles += " system_admin"
 	}
 
+	user.AzureGroups = authUser.AzureGroups
+
 	result := <-a.Srv.Store.User().Update(user, true)
 	if result.Err != nil {
 		return nil, model.NewAppError("LoginByOAuth", "Cannot update user: "+result.Err.Error(), nil, "", http.StatusBadRequest)
@@ -734,8 +736,6 @@ type GroupIds struct {
 }
 
 type Group struct {
-	Id           string `json:"id,omitempty"`
-	DisplayName  string `json:"displayName,omitempty"`
 	MailNickname string `json:"mailNickname,omitempty"`
 }
 
