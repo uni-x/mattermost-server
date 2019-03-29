@@ -853,3 +853,8 @@ func (_m *UserStore) GetAzureGroups(userId string) store.StoreChannel {
 	var r0 store.StoreChannel
 	return r0
 }
+
+func (_m *UserStore) GetAzureGroupUsers(groupName string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}

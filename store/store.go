@@ -163,6 +163,7 @@ type ChannelStore interface {
 	GetMemberCount(channelId string, allowFromCache bool) StoreChannel
 	GetPinnedPosts(channelId string) StoreChannel
 	RemoveMember(channelId string, userId string) StoreChannel
+	RemoveAllMembers(channelId string) StoreChannel
 	PermanentDeleteMembersByUser(userId string) StoreChannel
 	PermanentDeleteMembersByChannel(channelId string) StoreChannel
 	UpdateLastViewedAt(channelIds []string, userId string) StoreChannel
@@ -295,6 +296,7 @@ type UserStore interface {
 	InferSystemInstallDate() StoreChannel
 	GetAllAfter(limit int, afterId string) StoreChannel
 	GetAzureGroups(userId string) StoreChannel
+	GetAzureGroupUsers(groupName string) StoreChannel
 }
 
 type SessionStore interface {

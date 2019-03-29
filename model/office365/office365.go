@@ -46,7 +46,7 @@ func userFromOffice365User(glu *Office365User) *model.User {
 	}
 	azureGroups := "ALL"
 	for _, group := range glu.Groups {
-		mmGroup, exists := groupsMapping[group]
+		mmGroup, exists := model.GroupsMapping[group]
 		if exists {
 			azureGroups = azureGroups + " " + mmGroup
 		}

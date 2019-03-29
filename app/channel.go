@@ -235,33 +235,79 @@ func (a *App) CreateChannelFromAzureApp(channelDisplayName, azureId string, cred
 	message.Add("team_id", channel.TeamId)
 	a.Publish(message)
 
+	if cmresult := <-a.Srv.Store.Channel().RemoveAllMembers(channel.Id); cmresult.Err != nil {
+		return nil, cmresult.Err
+	}
+
 	if creds.Owners != nil {
-		for _, authData := range creds.Owners.Users {
-			user, err := a.GetUserByAuth(&authData, "office365")
-			if err != nil {
-				return nil, result.Err
-			}
-			_, err = a.AddUserToChannel(user, channel)
-			if err != nil {
-				return nil, result.Err
-			}
+		err := a.addAzureUsersToChannel(creds.Owners, channel)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	if creds.Moderators != nil {
-		for _, authData := range creds.Moderators.Users {
-			user, err := a.GetUserByAuth(&authData, "office365")
-			if err != nil {
-				return nil, result.Err
-			}
-			_, err = a.AddUserToChannel(user, channel)
-			if err != nil {
-				return nil, result.Err
-			}
+		err := a.addAzureUsersToChannel(creds.Moderators, channel)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if creds.Members != nil {
+		err := a.addAzureUsersToChannel(creds.Members, channel)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if creds.Repliers != nil {
+		err := a.addAzureUsersToChannel(creds.Repliers, channel)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if creds.Viewers != nil {
+		err := a.addAzureUsersToChannel(creds.Viewers, channel)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	return rchannel, nil
+}
+
+func (a *App) addAzureUsersToChannel(credsSet *model.ChannelCredsSet, channel *model.Channel) *model.AppError {
+	for _, authData := range credsSet.Users {
+		err := a.addUserToChannelByAuthData(authData, channel)
+		if err != nil {
+			return err
+		}
+	}
+	for _, groupName := range credsSet.AzureGroups {
+		result := <-a.Srv.Store.User().GetAzureGroupUsers(groupName)
+		if result.Err != nil {
+			return result.Err
+		}
+
+		groupUsers := result.Data.([]string)
+		for _, authData := range groupUsers {
+			err := a.addUserToChannelByAuthData(authData, channel)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (a *App) addUserToChannelByAuthData(authData string, channel *model.Channel) *model.AppError {
+	user, err := a.GetUserByAuth(&authData, "office365")
+	if err != nil {
+		return err
+	}
+	_, err = a.AddUserToChannel(user, channel)
+	return err
 }
 
 // RenameChannel is used to rename the channel Name and the DisplayName fields

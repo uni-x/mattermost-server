@@ -1458,3 +1458,14 @@ func (us SqlUserStore) GetAzureGroups(userId string) store.StoreChannel {
 		result.Data = azureGroups
 	})
 }
+
+func (us SqlUserStore) GetAzureGroupUsers(groupName string) store.StoreChannel {
+	return store.Do(func(result *store.StoreResult) {
+		userIds := []string{}
+		if _, err := us.GetReplica().Select(&userIds, "SELECT AuthData FROM Users WHERE AzureGroups LIKE :AzureGroup", map[string]interface{}{"AzureGroup": "%" + groupName + "%"}); err != nil {
+			result.Err = model.NewAppError("SqlUserStore.GetAzureGroupUsers", "store.sql_user.get_azure_group_users.app_error", nil, err.Error(), http.StatusInternalServerError)
+		} else {
+			result.Data = userIds
+		}
+	})
+}

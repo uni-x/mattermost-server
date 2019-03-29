@@ -1057,3 +1057,8 @@ func (s *ChannelStore) CheckIfEmpty(channelId string) store.StoreChannel {
 	var r0 store.StoreChannel
 	return r0
 }
+
+func (s *ChannelStore) RemoveAllMembers(channelId string) store.StoreChannel {
+	var r0 store.StoreChannel
+	return r0
+}

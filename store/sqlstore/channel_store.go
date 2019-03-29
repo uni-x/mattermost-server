@@ -2573,18 +2573,10 @@ func (s SqlChannelStore) GetChannelMembersForExport(userId string, teamId string
 	})
 }
 
-var validAzureGroups = map[string]bool{
-	"ALL":       true,
-	"STUDENT":   true,
-	"PARENT":    true,
-	"TEACHER":   true,
-	"MODERATOR": true,
-}
-
 func prepareQuery(userId string, azureGroups []string) string {
 	groupsOut := []string{}
 	for _, group := range azureGroups {
-		if _, ok := validAzureGroups[group]; ok {
+		if _, ok := model.ValidAzureGroups[group]; ok {
 			groupsOut = append(groupsOut, group)
 		}
 	}
@@ -3000,7 +2992,7 @@ var noSuchUser = ne.New("no such user")
 
 func (s SqlChannelStore) validateChannelRole(set *model.ChannelCredsSet) error {
 	for _, group := range set.AzureGroups {
-		if _, ok := validAzureGroups[group]; !ok {
+		if _, ok := model.ValidAzureGroups[group]; !ok {
 			return noSuchGroup
 		}
 	}
@@ -3014,4 +3006,13 @@ func (s SqlChannelStore) validateChannelRole(set *model.ChannelCredsSet) error {
 		}
 	}
 	return nil
+}
+
+func (s SqlChannelStore) RemoveAllMembers(channelId string) store.StoreChannel {
+	return store.Do(func(result *store.StoreResult) {
+		_, err := s.GetMaster().Exec("DELETE FROM ChannelMembers WHERE ChannelId = :ChannelId", map[string]interface{}{"ChannelId": channelId})
+		if err != nil {
+			result.Err = model.NewAppError("SqlChannelStore.RemoveAllMembers", "store.sql_channel.remove_all_members.app_error", nil, "channel_id="+channelId+", "+err.Error(), http.StatusInternalServerError)
+		}
+	})
 }
