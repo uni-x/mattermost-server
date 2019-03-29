@@ -235,25 +235,29 @@ func (a *App) CreateChannelFromAzureApp(channelDisplayName, azureId string, cred
 	message.Add("team_id", channel.TeamId)
 	a.Publish(message)
 
-	for _, authData := range creds.Owners.Users {
-		user, err := a.GetUserByAuth(&authData, "office365")
-		if err != nil {
-			return nil, result.Err
-		}
-		_, err = a.AddUserToChannel(user, channel)
-		if err != nil {
-			return nil, result.Err
+	if creds.Owners != nil {
+		for _, authData := range creds.Owners.Users {
+			user, err := a.GetUserByAuth(&authData, "office365")
+			if err != nil {
+				return nil, result.Err
+			}
+			_, err = a.AddUserToChannel(user, channel)
+			if err != nil {
+				return nil, result.Err
+			}
 		}
 	}
 
-	for _, authData := range creds.Moderators.Users {
-		user, err := a.GetUserByAuth(&authData, "office365")
-		if err != nil {
-			return nil, result.Err
-		}
-		_, err = a.AddUserToChannel(user, channel)
-		if err != nil {
-			return nil, result.Err
+	if creds.Moderators != nil {
+		for _, authData := range creds.Moderators.Users {
+			user, err := a.GetUserByAuth(&authData, "office365")
+			if err != nil {
+				return nil, result.Err
+			}
+			_, err = a.AddUserToChannel(user, channel)
+			if err != nil {
+				return nil, result.Err
+			}
 		}
 	}
 
