@@ -594,7 +594,31 @@ func (a *App) sendUpdatedPostEvent(post *model.Post) {
 	a.Publish(message)
 }
 
+func (a *App) checkViewerCreds(channelId string) (bool, *model.AppError) {
+	userId := a.Session.UserId
+	user, e := a.GetUser(userId)
+	if e != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
+		return false, err
+	}
+	azureGroups := strings.Fields(user.AzureGroups)
+	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, "viewer")
+	if e != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
+		return false, err
+	}
+	return granted, nil
+}
+
 func (a *App) GetPostsPage(channelId string, page int, perPage int) (*model.PostList, *model.AppError) {
+	granted, err := a.checkViewerCreds(channelId)
+	if err != nil {
+		return nil, err
+	}
+	if !granted {
+		return &model.PostList{}, nil
+	}
+
 	result := <-a.Srv.Store.Post().GetPosts(channelId, page*perPage, perPage, true)
 	if result.Err != nil {
 		return nil, result.Err
@@ -603,6 +627,14 @@ func (a *App) GetPostsPage(channelId string, page int, perPage int) (*model.Post
 }
 
 func (a *App) GetPosts(channelId string, offset int, limit int) (*model.PostList, *model.AppError) {
+	granted, err := a.checkViewerCreds(channelId)
+	if err != nil {
+		return nil, err
+	}
+	if !granted {
+		return &model.PostList{}, nil
+	}
+
 	result := <-a.Srv.Store.Post().GetPosts(channelId, offset, limit, true)
 	if result.Err != nil {
 		return nil, result.Err
@@ -673,6 +705,14 @@ func (a *App) GetPermalinkPost(postId string, userId string) (*model.PostList, *
 		return nil, model.NewAppError("getPermalinkTmp", "api.post_get_post_by_id.get.app_error", nil, "", http.StatusNotFound)
 	}
 	post := list.Posts[list.Order[0]]
+
+	granted, err := a.checkViewerCreds(post.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+	if !granted {
+		return &model.PostList{}, nil
+	}
 
 	channel, err := a.GetChannel(post.ChannelId)
 	if err != nil {
