@@ -2879,18 +2879,18 @@ func (s SqlChannelStore) ClearChannelCreds(channelId string) store.StoreChannel 
 		}
 		transaction, err := s.GetMaster().Begin()
 		if err != nil {
-			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			result.Err = model.NewAppError("SqlTeamStore.ClearChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if _, err := transaction.Exec(`DELETE FROM ChannelCreds WHERE ChannelId = :ChannelId`, map[string]interface{}{
 			"ChannelId": channelId,
 		}); err != nil {
-			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			result.Err = model.NewAppError("SqlTeamStore.ClearChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if err := transaction.Commit(); err != nil {
-			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
+			result.Err = model.NewAppError("SqlTeamStore.ClearChannelCreds", "stub", nil, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	})
@@ -2900,7 +2900,7 @@ func (s SqlChannelStore) updateUserCreds(credsList []string, channelId, channelR
 	for _, userId := range credsList {
 		err := s.updateCred(channelId, channelRole, userId, "")
 		if err != nil {
-			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			result.Err = model.NewAppError("SqlTeamStore.updateUserCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -2910,7 +2910,7 @@ func (s SqlChannelStore) updateGroupCreds(credsList []string, channelId, channel
 	for _, azureGroup := range credsList {
 		err := s.updateCred(channelId, channelRole, "", azureGroup)
 		if err != nil {
-			result.Err = model.NewAppError("SqlTeamStore.UpdateChannelCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
+			result.Err = model.NewAppError("SqlTeamStore.updateGroupCreds", "store.sql_channel.get_all.app_error", nil, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
