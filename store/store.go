@@ -55,6 +55,7 @@ type Store interface {
 	Preference() PreferenceStore
 	License() LicenseStore
 	Token() TokenStore
+	ApiToken() ApiTokenStore
 	Emoji() EmojiStore
 	Status() StatusStore
 	FileInfo() FileInfoStore
@@ -437,6 +438,13 @@ type TokenStore interface {
 	Save(recovery *model.Token) StoreChannel
 	Delete(token string) StoreChannel
 	GetByToken(token string) StoreChannel
+	Cleanup()
+}
+
+type ApiTokenStore interface {
+	Delete(userId string) StoreChannel
+	Refresh(userId string) StoreChannel
+	Get(userId string) StoreChannel
 	Cleanup()
 }
 

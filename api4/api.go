@@ -109,6 +109,8 @@ type Routes struct {
 
 	TermsOfService *mux.Router // 'api/v4/terms_of_service
 	Groups         *mux.Router // 'api/v4/groups'
+
+	ApiTokens *mux.Router // 'api/v4/api-tokens'
 }
 
 type API struct {
@@ -208,6 +210,8 @@ func Init(configservice configservice.ConfigService, globalOptionsFunc app.AppOp
 	api.BaseRoutes.TermsOfService = api.BaseRoutes.ApiRoot.PathPrefix("/terms_of_service").Subrouter()
 	api.BaseRoutes.Groups = api.BaseRoutes.ApiRoot.PathPrefix("/groups").Subrouter()
 
+	api.BaseRoutes.ApiTokens = api.BaseRoutes.ApiRoot.PathPrefix("/api-tokens").Subrouter()
+
 	api.InitUser()
 	api.InitTeam()
 	api.InitChannel()
@@ -219,6 +223,7 @@ func Init(configservice configservice.ConfigService, globalOptionsFunc app.AppOp
 	api.InitSaml()
 	api.InitCompliance()
 	api.InitCluster()
+	api.InitApiTokens()
 	api.InitLdap()
 	api.InitElasticsearch()
 	api.InitDataRetention()

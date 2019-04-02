@@ -83,6 +83,7 @@ type SqlSupplierOldStores struct {
 	preference           store.PreferenceStore
 	license              store.LicenseStore
 	token                store.TokenStore
+	apiToken             store.ApiTokenStore
 	emoji                store.EmojiStore
 	status               store.StatusStore
 	fileInfo             store.FileInfoStore
@@ -138,6 +139,7 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 	supplier.oldStores.preference = NewSqlPreferenceStore(supplier)
 	supplier.oldStores.license = NewSqlLicenseStore(supplier)
 	supplier.oldStores.token = NewSqlTokenStore(supplier)
+	supplier.oldStores.apiToken = NewSqlApiTokenStore(supplier)
 	supplier.oldStores.emoji = NewSqlEmojiStore(supplier, metrics)
 	supplier.oldStores.status = NewSqlStatusStore(supplier)
 	supplier.oldStores.fileInfo = NewSqlFileInfoStore(supplier, metrics)
@@ -178,6 +180,7 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 	supplier.oldStores.preference.(*SqlPreferenceStore).CreateIndexesIfNotExists()
 	supplier.oldStores.license.(*SqlLicenseStore).CreateIndexesIfNotExists()
 	supplier.oldStores.token.(*SqlTokenStore).CreateIndexesIfNotExists()
+	supplier.oldStores.apiToken.(*SqlApiTokenStore).CreateIndexesIfNotExists()
 	supplier.oldStores.emoji.(*SqlEmojiStore).CreateIndexesIfNotExists()
 	supplier.oldStores.status.(*SqlStatusStore).CreateIndexesIfNotExists()
 	supplier.oldStores.fileInfo.(*SqlFileInfoStore).CreateIndexesIfNotExists()
@@ -982,6 +985,10 @@ func (ss *SqlSupplier) License() store.LicenseStore {
 
 func (ss *SqlSupplier) Token() store.TokenStore {
 	return ss.oldStores.token
+}
+
+func (ss *SqlSupplier) ApiToken() store.ApiTokenStore {
+	return ss.oldStores.apiToken
 }
 
 func (ss *SqlSupplier) Emoji() store.EmojiStore {

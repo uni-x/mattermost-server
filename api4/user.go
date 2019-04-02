@@ -19,8 +19,8 @@ import (
 func (api *API) InitUser() {
 	api.BaseRoutes.Users.Handle("", api.ApiHandler(createUser)).Methods("POST")
 	api.BaseRoutes.Users.Handle("", api.ApiSessionRequired(getUsers)).Methods("GET")
-	api.BaseRoutes.Users.Handle("/create-from-azure-app", api.ApiHandler(createUsersFromAzureApp)).Methods("POST")
-	api.BaseRoutes.Users.Handle("/delete-from-azure-app", api.ApiHandler(deleteUsersFromAzureApp)).Methods("POST")
+	api.BaseRoutes.Users.Handle("/create-from-azure-app", api.ApiTokenRequired(createUsersFromAzureApp)).Methods("POST")
+	api.BaseRoutes.Users.Handle("/delete-from-azure-app", api.ApiTokenRequired(deleteUsersFromAzureApp)).Methods("POST")
 	api.BaseRoutes.Users.Handle("/ids", api.ApiSessionRequired(getUsersByIds)).Methods("POST")
 	api.BaseRoutes.Users.Handle("/usernames", api.ApiSessionRequired(getUsersByNames)).Methods("POST")
 	api.BaseRoutes.Users.Handle("/search", api.ApiSessionRequired(searchUsers)).Methods("POST")

@@ -2176,6 +2176,14 @@ func (ips *ImageProxySettings) SetDefaults(ss ServiceSettings) {
 	}
 }
 
+type ApiSettings struct {
+	RefreshToken string
+}
+
+func (as *ApiSettings) GetRefreshToken() string {
+	return as.RefreshToken
+}
+
 type ConfigFunc func() *Config
 
 type Config struct {
@@ -2212,6 +2220,7 @@ type Config struct {
 	DisplaySettings       DisplaySettings
 	TimezoneSettings      TimezoneSettings
 	ImageProxySettings    ImageProxySettings
+	ApiSettings           ApiSettings
 }
 
 func (o *Config) Clone() *Config {

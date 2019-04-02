@@ -252,6 +252,9 @@ func NewServer(options ...Option) (*Server, error) {
 			runTokenCleanupJob(s)
 		})
 		s.Go(func() {
+			runApiTokenCleanupJob(s)
+		})
+		s.Go(func() {
 			runCommandWebhookCleanupJob(s)
 		})
 
@@ -624,6 +627,13 @@ func runTokenCleanupJob(s *Server) {
 	}, time.Hour*1)
 }
 
+func runApiTokenCleanupJob(s *Server) {
+	doApiTokenCleanup(s)
+	model.CreateRecurringTask("Token Cleanup", func() {
+		doApiTokenCleanup(s)
+	}, time.Hour*1)
+}
+
 func runCommandWebhookCleanupJob(s *Server) {
 	doCommandWebhookCleanup(s)
 	model.CreateRecurringTask("Command Hook Cleanup", func() {
@@ -650,6 +660,10 @@ func doDiagnostics(s *Server) {
 
 func doTokenCleanup(s *Server) {
 	s.Store.Token().Cleanup()
+}
+
+func doApiTokenCleanup(s *Server) {
+	s.Store.ApiToken().Cleanup()
 }
 
 func doCommandWebhookCleanup(s *Server) {

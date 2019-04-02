@@ -135,6 +135,10 @@ func (s *LayeredStore) Token() TokenStore {
 	return s.DatabaseLayer.Token()
 }
 
+func (s *LayeredStore) ApiToken() ApiTokenStore {
+	return s.DatabaseLayer.ApiToken()
+}
+
 func (s *LayeredStore) Emoji() EmojiStore {
 	return s.DatabaseLayer.Emoji()
 }

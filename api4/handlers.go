@@ -24,6 +24,20 @@ func (api *API) ApiHandler(h func(*Context, http.ResponseWriter, *http.Request))
 	}
 }
 
+// ApiTokenRequired provides a handler for API endpoints which do not require the user to be logged in order for access to be
+// granted but need authenticating through API Token in request header
+func (api *API) ApiTokenRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {
+	return &web.Handler{
+		GetGlobalAppOptions: api.GetGlobalAppOptions,
+		HandleFunc:          h,
+		RequireSession:      false,
+		TrustRequester:      false,
+		RequireMfa:          false,
+		IsStatic:            false,
+		RequireApiToken:     true,
+	}
+}
+
 // ApiSessionRequired provides a handler for API endpoints which require the user to be logged in in order for access to
 // be granted.
 func (api *API) ApiSessionRequired(h func(*Context, http.ResponseWriter, *http.Request)) http.Handler {

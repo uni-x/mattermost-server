@@ -241,3 +241,30 @@ func ParseAuthTokenFromRequest(r *http.Request) (string, TokenLocation) {
 
 	return "", TokenLocationNotFound
 }
+
+func (a *App) CheckApiToken(r *http.Request) *model.AppError {
+	if len(r.Header["User-Id"]) == 0 {
+		return model.NewAppError("", "api.context.check_api_token.app_error", nil, "ApiUserRequired", http.StatusUnauthorized)
+	}
+	if len(r.Header["Api-Token"]) == 0 {
+		return model.NewAppError("", "api.context.check_api_token.app_error", nil, "ApiTokenRequired", http.StatusUnauthorized)
+	}
+	userId := r.Header["User-Id"][0]
+	apiToken := r.Header["Api-Token"][0]
+	user, err := a.GetUserByAuth(&userId, "office365")
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(user.Roles, "system_admin") {
+		return model.NewAppError("", "api.context.check_api_token.app_error", nil, "UserIsNotAdmin", http.StatusUnauthorized)
+	}
+	result := <-a.Srv.Store.ApiToken().Get(userId)
+	if result.Err != nil {
+		return result.Err
+	}
+	realToken := result.Data.(*model.ApiToken)
+	if apiToken != realToken.Token {
+		return model.NewAppError("CheckApiToken", "api.user.check_APi_token.incorrect_token.app_error", nil, apiToken, http.StatusUnauthorized)
+	}
+	return nil
+}

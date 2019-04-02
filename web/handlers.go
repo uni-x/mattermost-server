@@ -43,6 +43,7 @@ type Handler struct {
 	TrustRequester      bool
 	RequireMfa          bool
 	IsStatic            bool
+	RequireApiToken     bool
 }
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +133,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if c.Err == nil && h.RequireSession {
 		c.SessionRequired()
+	}
+
+	if c.Err == nil && h.RequireApiToken {
+		c.Err = c.App.CheckApiToken(r)
 	}
 
 	if c.Err == nil && h.RequireMfa {
