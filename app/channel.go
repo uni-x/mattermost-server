@@ -734,7 +734,7 @@ func (a *App) PatchChannel(channel *model.Channel, patch *model.ChannelPatch, us
 		return nil, e
 	}
 	if !isOwner {
-		return nil, nil
+		return nil, model.NewAppError("PatchChannel", "api.channel.patch_channel.access_denied.app_error", nil, "", http.StatusBadRequest)
 	}
 
 	oldChannelDisplayName := channel.DisplayName

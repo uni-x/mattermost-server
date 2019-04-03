@@ -1127,7 +1127,7 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check join permission if adding yourself, otherwise check manage permission
-	if channel.Type == model.CHANNEL_OPEN {
+	/*if channel.Type == model.CHANNEL_OPEN {
 		if member.UserId == c.App.Session.UserId {
 			if !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_JOIN_PUBLIC_CHANNELS) {
 				c.SetPermissionError(model.PERMISSION_JOIN_PUBLIC_CHANNELS)
@@ -1149,9 +1149,27 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 	if channel.Type == model.CHANNEL_DIRECT || channel.Type == model.CHANNEL_GROUP {
 		c.Err = model.NewAppError("addUserToChannel", "api.channel.add_user_to_channel.type.app_error", nil, "", http.StatusBadRequest)
 		return
+	}*/
+
+	sessionUserId := c.App.Session.UserId
+	if c.Params.UserId != sessionUserId {
+		user, err := c.App.GetUser(sessionUserId)
+		if err != nil {
+			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, err.Error(), http.StatusBadRequest)
+			return
+		}
+		granted, err := c.App.CheckChannelCreds(channel.Id, *user.AuthData, strings.Fields(user.AzureGroups), "owner")
+		if err != nil {
+			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !granted {
+			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, "access denied", http.StatusBadRequest)
+			return
+		}
 	}
 
-	cm, err := c.App.AddChannelMember(member.UserId, channel, c.App.Session.UserId, postRootId, !c.App.Session.IsMobileApp())
+	cm, err := c.App.AddChannelMember(member.UserId, channel, sessionUserId, postRootId, !c.App.Session.IsMobileApp())
 	if err != nil {
 		c.Err = err
 		return
