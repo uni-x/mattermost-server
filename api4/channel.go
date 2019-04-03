@@ -38,7 +38,7 @@ func (api *API) InitChannel() {
 	api.BaseRoutes.Channel.Handle("/stats", api.ApiSessionRequired(getChannelStats)).Methods("GET")
 	api.BaseRoutes.Channel.Handle("/pinned", api.ApiSessionRequired(getPinnedPosts)).Methods("GET")
 	api.BaseRoutes.Channel.Handle("/timezones", api.ApiSessionRequired(getChannelMembersTimezones)).Methods("GET")
-	api.BaseRoutes.Channel.Handle("/check-creds", api.ApiSessionRequired(checkChannelCreds)).Methods("POST")
+	api.BaseRoutes.Channel.Handle("/check-creds", api.ApiHandler(checkChannelCreds)).Methods("POST")
 	api.BaseRoutes.Channel.Handle("/update-creds", api.ApiTokenRequired(updateChannelCreds)).Methods("POST")
 	api.BaseRoutes.ChannelForUser.Handle("/unread", api.ApiSessionRequired(getChannelUnread)).Methods("GET")
 
