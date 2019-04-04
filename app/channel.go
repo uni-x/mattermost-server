@@ -18,31 +18,28 @@ import (
 
 // display name, name. type, team_id
 func (a *App) CreateDefaultChannels(teamId string) ([]*model.Channel, *model.AppError) {
-	user, err := a.GetUser(a.Session.UserId)
+	/*user, err := a.GetUser(a.Session.UserId)
 	if err != nil {
 		return nil, err
-	}
+	}*/
 
-	offTopic := &model.Channel{DisplayName: utils.T("api.channel.create_default_channels.off_topic"), Name: "off-topic", Type: model.CHANNEL_OPEN, TeamId: teamId}
+	agenda := &model.Channel{DisplayName: utils.T("api.channel.create_default_channels.agenda"), Name: "agenda", Type: model.CHANNEL_OPEN, TeamId: teamId}
 
-	if _, err := a.CreateChannel(offTopic, false); err != nil {
+	if _, err := a.CreateChannel(agenda, false); err != nil {
 		return nil, err
 	}
 
 	creds := &model.ChannelCreds{
 		Owners: &model.ChannelCredsSet{
-			Users: []string{*user.AuthData},
-		},
-		Members: &model.ChannelCredsSet{
 			AzureGroups: []string{"ALL"},
 		},
 	}
-	result := <-a.Srv.Store.Channel().UpdateChannelCreds(offTopic.Id, creds)
+	result := <-a.Srv.Store.Channel().UpdateChannelCreds(agenda.Id, creds)
 	if result.Err != nil {
 		return nil, result.Err
 	}
 
-	channels := []*model.Channel{offTopic}
+	channels := []*model.Channel{agenda}
 	return channels, nil
 }
 
@@ -56,7 +53,7 @@ func (a *App) JoinDefaultChannels(teamId string, user *model.User, shouldBeAdmin
 		requestor = u.Data.(*model.User)
 	}
 
-	defaultChannelList := []string{"off-topic"}
+	defaultChannelList := []string{"agenda"}
 
 	if len(a.Config().TeamSettings.ExperimentalDefaultChannels) != 0 {
 		seenChannels := map[string]bool{}
@@ -130,7 +127,6 @@ func (a *App) postJoinMessageForDefaultChannel(user *model.User, requestor *mode
 }
 
 func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*model.Channel, *model.AppError) {
-	return nil, nil
 	if channel.IsGroupOrDirect() {
 		return nil, model.NewAppError("CreateChannelWithUser", "api.channel.create_channel.direct_channel.app_error", nil, "", http.StatusBadRequest)
 	}
@@ -160,12 +156,20 @@ func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*mod
 		return nil, err
 	}
 
-	var user *model.User
-	if user, err = a.GetUser(userId); err != nil {
-		return nil, err
+	result := <-a.Srv.Store.User().GetAll()
+	if result.Err != nil {
+		return nil, result.Err
 	}
 
-	a.postJoinChannelMessage(user, channel)
+	users := result.Data.([]*model.User)
+
+	for _, user := range users {
+		_, err := a.AddUserToChannel(user, channel)
+		if err != nil {
+			return nil, err
+		}
+		a.postJoinChannelMessage(user, channel)
+	}
 
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_CHANNEL_CREATED, "", "", userId, nil)
 	message.Add("channel_id", channel.Id)
@@ -413,7 +417,7 @@ func (a *App) GetOrCreateDirectChannel(userId, otherUserId string) (*model.Chann
 }
 
 func (a *App) createDirectChannel(userId string, otherUserId string) (*model.Channel, *model.AppError) {
-
+/*
 	result := <-a.Srv.Store.User().Get(userId)
 	if result.Err != nil {
 		return nil, model.NewAppError("CreateDirectChannel", "api.channel.create_direct_channel.invalid_user.app_error", nil, userId, http.StatusBadRequest)
@@ -425,8 +429,8 @@ func (a *App) createDirectChannel(userId string, otherUserId string) (*model.Cha
 		return nil, model.NewAppError("CreateDirectChannel", "api.channel.create_direct_channel.invalid_user.app_error", nil, otherUserId, http.StatusBadRequest)
 	}
 	uc2 := result.Data.(*model.User)
-
-	result = <-a.Srv.Store.Channel().CreateDirectChannel(userId, otherUserId)
+*/
+	result := <-a.Srv.Store.Channel().CreateDirectChannel(userId, otherUserId)
 	if result.Err != nil {
 		if result.Err.Id == store.CHANNEL_EXISTS_ERROR {
 			return result.Data.(*model.Channel), result.Err
@@ -445,7 +449,7 @@ func (a *App) createDirectChannel(userId string, otherUserId string) (*model.Cha
 
 	creds := &model.ChannelCreds{
 		Owners: &model.ChannelCredsSet{
-			Users: []string{*uc1.AuthData, *uc2.AuthData},
+			AzureGroups: []string{"ALL"},
 		},
 	}
 	result = <-a.Srv.Store.Channel().UpdateChannelCreds(channel.Id, creds)
@@ -512,10 +516,7 @@ func (a *App) CreateGroupChannel(userIds []string, creatorId string) (*model.Cha
 
 	creds := &model.ChannelCreds{
 		Owners: &model.ChannelCredsSet{
-			Users: owners,
-		},
-		Members: &model.ChannelCredsSet{
-			Users: members,
+			AzureGroups: []string{"ALL"},
 		},
 	}
 	result := <-a.Srv.Store.Channel().UpdateChannelCreds(channel.Id, creds)
@@ -2118,6 +2119,7 @@ func (a *App) FillInChannelsProps(channelList *model.ChannelList) *model.AppErro
 }
 
 func (a *App) CheckChannelCreds(channelId, userId string, azureGroups []string, channelRole string) (bool, *model.AppError) {
+return true, nil
 	var result store.StoreResult
 	switch channelRole {
 	case "owner":

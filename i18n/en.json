@@ -200,8 +200,8 @@
     "translation": "Unable to create more than {{.MaxChannelsPerTeam}} channels for current team"
   },
   {
-    "id": "api.channel.create_default_channels.off_topic",
-    "translation": "Off-Topic"
+    "id": "api.channel.create_default_channels.agenda",
+    "translation": "Agenda"
   },
   {
     "id": "api.channel.create_default_channels.town_square",
