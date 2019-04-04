@@ -5,6 +5,7 @@ package oauthoffice365
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/uni-x/mattermost-server/einterfaces"
@@ -21,6 +22,7 @@ type Office365User struct {
 	Surname           string `json:"surname"`
 	Mail              string `json:"mail"`
 	UserPrincipalName string `json:"userPrincipalName"`
+	ThumbnailPhoto    string `json:"thumbnailphoto"`
 	Groups            []string
 }
 
@@ -55,6 +57,7 @@ func userFromOffice365User(glu *Office365User) *model.User {
 	userId := glu.Id
 	user.AuthData = &userId
 	user.AuthService = model.USER_AUTH_SERVICE_OFFICE365
+	fmt.Println("IMAGE:", len(glu.ThumbnailPhoto))
 
 	return user
 }

@@ -533,6 +533,7 @@ func (a *App) LoginByOAuth(service string, userData io.Reader, teamId string, gr
 		return nil, model.NewAppError("LoginByOAuth", "api.user.login_by_oauth.parse.app_error",
 			map[string]interface{}{"Service": service}, "", http.StatusBadRequest)
 	}
+	fmt.Println("USERDATA:", string(buf.Bytes()))
 	authUser := provider.GetUserFromJson(bytes.NewReader(buf.Bytes()), groups)
 
 	authData := ""
