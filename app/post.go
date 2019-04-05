@@ -31,7 +31,7 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 	}
 	channel := result.Data.(*model.Channel)
 
-	channelId := channel.Id
+	/*channelId := channel.Id
 	userId := a.Session.UserId
 	user, e := a.GetUser(userId)
 	if e != nil {
@@ -54,7 +54,7 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 	if !granted {
 		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't create such posts in this channel", http.StatusBadRequest)
 		return nil, err
-	}
+	}*/
 
 	if strings.HasPrefix(post.Type, model.POST_SYSTEM_MESSAGE_PREFIX) {
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.type"}, "", http.StatusBadRequest)
@@ -436,14 +436,18 @@ func (a *App) SendEphemeralPost(userId string, post *model.Post) *model.Post {
 
 func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model.AppError) {
 	post.SanitizeProps()
+	propsEncoded, e := json.Marshal(post.Props)
+	if e != nil {
+		return nil,model.NewAppError("UpdatePost", "api.post.update_post.cannot_encode_props.app_error", nil, e.Error(), http.StatusBadRequest)
+	}
 
 	userId := a.Session.UserId
-	if userId != post.UserId {
+	if userId != post.UserId && !strings.Contains(string(propsEncoded), "matterpoll") {
 		err := model.NewAppError("UpdatePost", "api.post.update_post.access_denied.app_error", nil, "id="+post.Id, http.StatusBadRequest)
 		return nil, err
 	}
 
-	result := <-a.Srv.Store.Channel().Get(post.ChannelId, true)
+	/*result := <-a.Srv.Store.Channel().Get(post.ChannelId, true)
 	if result.Err != nil {
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
 		return nil, err
@@ -473,9 +477,9 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 	if !granted {
 		err := model.NewAppError("UpdatePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
 		return nil, err
-	}
+	}*/
 
-	result = <-a.Srv.Store.Post().Get(post.Id)
+	result := <-a.Srv.Store.Post().Get(post.Id)
 	if result.Err != nil {
 		return nil, result.Err
 	}

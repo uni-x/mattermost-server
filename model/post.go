@@ -85,6 +85,7 @@ type Post struct {
 	Metadata *PostMetadata `json:"metadata,omitempty" db:"-"`
 }
 
+
 type PostEphemeral struct {
 	UserID string `json:"user_id"`
 	Post   *Post  `json:"post"`
