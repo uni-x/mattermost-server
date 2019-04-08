@@ -616,6 +616,7 @@ return true, nil
 }
 
 func (a *App) GetPostsPage(channelId string, page int, perPage int) (*model.PostList, *model.AppError) {
+/*
 	granted, err := a.checkViewerCreds(channelId)
 	if err != nil {
 		return nil, err
@@ -623,7 +624,7 @@ func (a *App) GetPostsPage(channelId string, page int, perPage int) (*model.Post
 	if !granted {
 		return &model.PostList{}, nil
 	}
-
+*/
 	result := <-a.Srv.Store.Post().GetPosts(channelId, page*perPage, perPage, true)
 	if result.Err != nil {
 		return nil, result.Err
@@ -769,7 +770,7 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 		return nil, result.Err
 	}
 	post := result.Data.(*model.Post)
-
+/*
 	result = <-a.Srv.Store.Channel().Get(post.ChannelId, true)
 	if result.Err != nil {
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
@@ -778,11 +779,23 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 	channel := result.Data.(*model.Channel)
 
 	channelId := channel.Id
-
+*/
+	userId := a.Session.UserId
+	if post.UserId != userId {
+		user, e := a.GetUser(userId)
+		if e != nil {
+			err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
+			return nil, err
+		}
+		if !strings.Contains(user.Roles, "system_admin") {
+			err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
+			return nil, err
+		}
+	}
 	if result := <-a.Srv.Store.Post().Delete(postId, model.GetMillis(), deleteByID); result.Err != nil {
 		return nil, result.Err
 	}
-	userId := a.Session.UserId
+/*
 	user, e := a.GetUser(userId)
 	if e != nil {
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
@@ -800,6 +813,7 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 	} else {
 		channelRole = "moderator"
 	}
+
 	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, channelRole)
 	if e != nil {
 		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
@@ -809,7 +823,7 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
 		return nil, err
 	}
-
+*/
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_DELETED, "", post.ChannelId, "", nil)
 	message.Add("post", a.PreparePostForClient(post, false).ToJson())
 	a.Publish(message)
