@@ -725,11 +725,11 @@ func (a *App) RestoreChannel(channel *model.Channel, userId string) (*model.Chan
 }
 
 func (a *App) PatchChannel(channel *model.Channel, patch *model.ChannelPatch, userId string) (*model.Channel, *model.AppError) {
+/*
 	user, e := a.GetUser(userId)
 	if e != nil {
 		return nil, e
 	}
-
 	isOwner, e := a.CheckChannelCreds(channel.Id, *user.AuthData, []string{}, "owner")
 	if e != nil {
 		return nil, e
@@ -737,7 +737,7 @@ func (a *App) PatchChannel(channel *model.Channel, patch *model.ChannelPatch, us
 	if !isOwner {
 		return nil, model.NewAppError("PatchChannel", "api.channel.patch_channel.access_denied.app_error", nil, "", http.StatusBadRequest)
 	}
-
+*/
 	oldChannelDisplayName := channel.DisplayName
 	oldChannelHeader := channel.Header
 	oldChannelPurpose := channel.Purpose

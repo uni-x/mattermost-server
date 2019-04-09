@@ -762,7 +762,7 @@ func deleteChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.Err = model.NewAppError("deleteChannel", "api.channel.delete_channel.type.invalid", nil, "", http.StatusBadRequest)
 		return
 	}
-
+/*
 	userId := c.App.Session.UserId
 	user, err := c.App.GetUser(userId)
 	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, *user.AuthData, strings.Fields(user.AzureGroups), "owner")
@@ -775,7 +775,7 @@ func deleteChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.Err = model.NewAppError("Api4.DeleteChannel", "api.channel.delete_channel.error", nil, "access denied", http.StatusBadRequest)
 		return
 	}
-
+*/
 	err = c.App.DeleteChannel(channel, c.App.Session.UserId)
 	if err != nil {
 		c.Err = err
