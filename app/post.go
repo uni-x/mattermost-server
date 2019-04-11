@@ -436,9 +436,13 @@ func (a *App) SendEphemeralPost(userId string, post *model.Post) *model.Post {
 
 func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model.AppError) {
 	post.SanitizeProps()
+	propsEncoded, e := json.Marshal(post.Props)
+	if e != nil {
+		return nil, model.NewAppError("UpdatePost", "api.post.update_post.cannot_encode_props.app_error", nil, e.Error(), http.StatusBadRequest)
+	}
 
 	userId := a.Session.UserId
-	if userId != post.UserId {
+	if userId != post.UserId && !strings.Contains(string(propsEncoded), "matterpoll") {
 		err := model.NewAppError("UpdatePost", "api.post.update_post.access_denied.app_error", nil, "id="+post.Id, http.StatusBadRequest)
 		return nil, err
 	}
@@ -770,13 +774,10 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
 		return nil, err
 	}
-	channel := result.Data.(*model.Channel)
 
+	channel := result.Data.(*model.Channel)
 	channelId := channel.Id
 
-	if result := <-a.Srv.Store.Post().Delete(postId, model.GetMillis(), deleteByID); result.Err != nil {
-		return nil, result.Err
-	}
 	userId := a.Session.UserId
 	user, e := a.GetUser(userId)
 	if e != nil {
@@ -803,6 +804,10 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 	if !granted {
 		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
 		return nil, err
+	}
+
+	if result := <-a.Srv.Store.Post().Delete(postId, model.GetMillis(), deleteByID); result.Err != nil {
+		return nil, result.Err
 	}
 
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_DELETED, "", post.ChannelId, "", nil)
