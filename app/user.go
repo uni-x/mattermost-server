@@ -305,10 +305,15 @@ func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string,
 	if provider == nil {
 		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.not_available.app_error", map[string]interface{}{"Service": strings.Title(service)}, "", http.StatusNotImplemented)
 	}
-	user := provider.GetUserFromJson(userData, groups)
+	user, pictureFile := provider.GetUserFromJson(userData, groups)
 
 	if user == nil {
 		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.create.app_error", map[string]interface{}{"Service": service}, "", http.StatusInternalServerError)
+	}
+
+	e := a.SetProfileImageFromFile(user.Id, pictureFile)
+	if e != nil {
+		return nil, e
 	}
 
 	return a.createOAuthUser(service, user)
@@ -1607,9 +1612,14 @@ func (a *App) AutocompleteUsersInTeam(teamId string, term string, options *model
 }
 
 func (a *App) UpdateOAuthUserAttrs(userData io.Reader, user *model.User, provider einterfaces.OauthProvider, service string, groups []string) *model.AppError {
-	oauthUser := provider.GetUserFromJson(userData, groups)
+	oauthUser, pictureFile := provider.GetUserFromJson(userData, groups)
 	if oauthUser == nil {
 		return model.NewAppError("UpdateOAuthUserAttrs", "api.user.update_oauth_user_attrs.get_user.app_error", map[string]interface{}{"Service": service}, "", http.StatusBadRequest)
+	}
+
+	e := a.SetProfileImageFromFile(user.Id, pictureFile)
+	if e != nil {
+		return e
 	}
 
 	userAttrsChanged := false

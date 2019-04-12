@@ -534,7 +534,7 @@ func (a *App) LoginByOAuth(service string, userData io.Reader, teamId string, gr
 			map[string]interface{}{"Service": service}, "", http.StatusBadRequest)
 	}
 	fmt.Println("USERDATA:", string(buf.Bytes()))
-	authUser := provider.GetUserFromJson(bytes.NewReader(buf.Bytes()), groups)
+	authUser, pictureFile := provider.GetUserFromJson(bytes.NewReader(buf.Bytes()), groups)
 
 	authData := ""
 	if authUser.AuthData != nil {
@@ -601,6 +601,11 @@ func (a *App) LoginByOAuth(service string, userData io.Reader, teamId string, gr
 		})
 	}
 
+	err = a.SetProfileImageFromFile(user.Id, pictureFile)
+	if err != nil {
+		return nil, err
+	}
+
 	return user, nil
 }
 
@@ -610,7 +615,13 @@ func (a *App) CompleteSwitchWithOAuth(service string, userData io.Reader, email 
 		return nil, model.NewAppError("CompleteSwitchWithOAuth", "api.user.complete_switch_with_oauth.unavailable.app_error",
 			map[string]interface{}{"Service": strings.Title(service)}, "", http.StatusNotImplemented)
 	}
-	ssoUser := provider.GetUserFromJson(userData, groups)
+	ssoUser, pictureFile := provider.GetUserFromJson(userData, groups)
+
+	e := a.SetProfileImageFromFile(ssoUser.Id, pictureFile)
+	if e != nil {
+		return nil, e
+	}
+
 	ssoEmail := ssoUser.Email
 
 	authData := ""

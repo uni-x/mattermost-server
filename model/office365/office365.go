@@ -4,9 +4,12 @@
 package oauthoffice365
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/uni-x/mattermost-server/einterfaces"
 	"github.com/uni-x/mattermost-server/model"
@@ -31,51 +34,72 @@ func init() {
 	einterfaces.RegisterOauthProvider(model.USER_AUTH_SERVICE_OFFICE365, provider)
 }
 
-func userFromOffice365User(glu *Office365User) *model.User {
+func userFromOffice365User(office365User *Office365User) (*model.User, io.Reader) {
 	user := &model.User{}
-	username := glu.DisplayName
+	username := office365User.DisplayName
 	if username == "" {
-		username = glu.GivenName + "_" + glu.Surname
+		username = office365User.GivenName + "_" + office365User.Surname
 	}
 	user.Username = model.CleanUsername(username)
-	user.FirstName = glu.GivenName
-	user.LastName = glu.Surname
-	user.Email = glu.Mail
-	if glu.Mail != "" {
-		user.Email = glu.Mail
+	user.FirstName = office365User.GivenName
+	user.LastName = office365User.Surname
+	user.Email = office365User.Mail
+	if office365User.Mail != "" {
+		user.Email = office365User.Mail
 	} else {
-		user.Email = glu.UserPrincipalName
+		user.Email = office365User.UserPrincipalName
 	}
 	azureGroups := "ALL"
-	for _, group := range glu.Groups {
+	for _, group := range office365User.Groups {
 		mmGroup, exists := model.GroupsMapping[group]
 		if exists {
 			azureGroups = azureGroups + " " + mmGroup
 		}
 	}
 	user.AzureGroups = azureGroups
-	userId := glu.Id
+	userId := office365User.Id
 	user.AuthData = &userId
 	user.AuthService = model.USER_AUTH_SERVICE_OFFICE365
-	fmt.Println("IMAGE:", len(glu.ThumbnailPhoto))
+	fmt.Println("IMAGE:", len(office365User.ThumbnailPhoto))
+	if office365User.ThumbnailPhoto == "" {
+		office365User.ThumbnailPhoto = DEFAULT_PROFILE_IMAGE
+	}
 
-	return user
+	fileBytes, err := getFileFromBlob(office365User.ThumbnailPhoto)
+	if err != nil {
+		fileBytes = []byte{}
+	}
+	return user, bytes.NewReader(fileBytes)
+}
+
+func getFileFromBlob(blob string) ([]byte, error) {
+	blobParts := strings.Split(blob, ";base64,")
+	if len(blobParts) > 1 {
+		blob = blobParts[1]
+	}
+	decoded, err := base64.StdEncoding.DecodeString(blob)
+	if err != nil {
+		if err != nil {
+			return []byte{}, err
+		}
+	}
+	return decoded, nil
 }
 
 func office365UserFromJson(data io.Reader, groups []string) *Office365User {
 	decoder := json.NewDecoder(data)
-	var glu Office365User
-	err := decoder.Decode(&glu)
+	var office365User Office365User
+	err := decoder.Decode(&office365User)
 	if err == nil {
-		glu.Groups = groups
-		return &glu
+		office365User.Groups = groups
+		return &office365User
 	} else {
 		return nil
 	}
 }
 
-func (glu *Office365User) ToJson() string {
-	b, err := json.Marshal(glu)
+func (office365User *Office365User) ToJson() string {
+	b, err := json.Marshal(office365User)
 	if err != nil {
 		return ""
 	} else {
@@ -83,38 +107,38 @@ func (glu *Office365User) ToJson() string {
 	}
 }
 
-func (glu *Office365User) IsValid() bool {
-	if glu.Id == "" {
+func (office365User *Office365User) IsValid() bool {
+	if office365User.Id == "" {
 		return false
 	}
-	if len(glu.Mail) == 0 && len(glu.UserPrincipalName) == 0 {
+	if len(office365User.Mail) == 0 && len(office365User.UserPrincipalName) == 0 {
 		return false
 	}
 	return true
 }
 
-func (glu *Office365User) getAuthData() string {
-	return glu.Id
+func (office365User *Office365User) getAuthData() string {
+	return office365User.Id
 }
 
-func (m *Office365Provider) GetUserFromJson(data io.Reader, groups []string) *model.User {
-	glu := office365UserFromJson(data, groups)
-	if glu.IsValid() {
-		return userFromOffice365User(glu)
+func (m *Office365Provider) GetUserFromJson(data io.Reader, groups []string) (*model.User, io.Reader) {
+	office365User := office365UserFromJson(data, groups)
+	if office365User.IsValid() {
+		return userFromOffice365User(office365User)
 	}
-	return &model.User{}
+	return &model.User{}, nil
 }
 
 func (m *Office365Provider) GetUsersFromJson(data io.Reader) ([]*model.User, error) {
 	decoder := json.NewDecoder(data)
-	var glus []Office365User
+	var office365Users []Office365User
 	var users []*model.User
-	err := decoder.Decode(&glus)
+	err := decoder.Decode(&office365Users)
 	if err != nil {
 		return nil, err
 	} else {
-		for _, glu := range glus {
-			user := userFromOffice365User(&glu)
+		for _, office365User := range office365Users {
+			user, _ := userFromOffice365User(&office365User)
 			if user != nil {
 				users = append(users, user)
 			}
