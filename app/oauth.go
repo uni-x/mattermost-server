@@ -553,14 +553,14 @@ func (a *App) LoginByOAuth(service string, userData io.Reader, teamId string, gr
 		}
 		return nil, err
 	}
+	/*
+		roles := user.Roles
+		user.Roles = authUser.Roles
 
-	roles := user.Roles
-	user.Roles = authUser.Roles
-
-	if strings.Contains(roles, "system_admin") {
-		user.Roles += " system_admin"
-	}
-
+		if strings.Contains(roles, "system_admin") {
+			user.Roles += " system_admin"
+		}
+	*/
 	user.AzureGroups = authUser.AzureGroups
 
 	result := <-a.Srv.Store.User().Update(user, true)
