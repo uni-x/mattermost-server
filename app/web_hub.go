@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 const (
@@ -31,7 +31,7 @@ type WebConnActivityMessage struct {
 
 type Hub struct {
 	// connectionCount should be kept first.
-	// See https://github.com/uni-x/mattermost-server/pull/7281
+	// See https://github.com/mattermost/mattermost-server/pull/7281
 	connectionCount int64
 	app             *App
 	connectionIndex int
@@ -303,10 +303,32 @@ func (a *App) InvalidateCacheForUser(userId string) {
 	}
 }
 
+func (a *App) InvalidateCacheForUserTeams(userId string) {
+	a.InvalidateCacheForUserTeamsSkipClusterSend(userId)
+
+	if a.Cluster != nil {
+		msg := &model.ClusterMessage{
+			Event:    model.CLUSTER_EVENT_INVALIDATE_CACHE_FOR_USER_TEAMS,
+			SendType: model.CLUSTER_SEND_BEST_EFFORT,
+			Data:     userId,
+		}
+		a.Cluster.SendClusterMessage(msg)
+	}
+}
+
 func (a *App) InvalidateCacheForUserSkipClusterSend(userId string) {
 	a.Srv.Store.Channel().InvalidateAllChannelMembersForUser(userId)
 	a.Srv.Store.User().InvalidateProfilesInChannelCacheByUser(userId)
 	a.Srv.Store.User().InvalidatProfileCacheForUser(userId)
+
+	hub := a.GetHubForUserId(userId)
+	if hub != nil {
+		hub.InvalidateUser(userId)
+	}
+}
+
+func (a *App) InvalidateCacheForUserTeamsSkipClusterSend(userId string) {
+	a.Srv.Store.Team().InvalidateAllTeamIdsForUser(userId)
 
 	hub := a.GetHubForUserId(userId)
 	if hub != nil {

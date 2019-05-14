@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 func TestSystemStore(t *testing.T, ss store.Store) {

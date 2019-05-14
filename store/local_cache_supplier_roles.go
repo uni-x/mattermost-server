@@ -6,7 +6,7 @@ package store
 import (
 	"context"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func (s *LocalCacheSupplier) handleClusterInvalidateRole(msg *model.ClusterMessage) {
@@ -28,6 +28,12 @@ func (s *LocalCacheSupplier) RoleGet(ctx context.Context, roleId string, hints .
 	// Roles are cached by name, as that is most commonly how they are looked up.
 	// This means that no caching is supported on roles being looked up by ID.
 	return s.Next().RoleGet(ctx, roleId, hints...)
+}
+
+func (s *LocalCacheSupplier) RoleGetAll(ctx context.Context, hints ...LayeredStoreHint) *LayeredStoreSupplierResult {
+	// Roles are cached by name, as that is most commonly how they are looked up.
+	// This means that no caching is supported on roles being listed.
+	return s.Next().RoleGetAll(ctx, hints...)
 }
 
 func (s *LocalCacheSupplier) RoleGetByName(ctx context.Context, name string, hints ...LayeredStoreHint) *LayeredStoreSupplierResult {

@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/plugin"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/plugin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +26,7 @@ func getHashedKey(key string) string {
 }
 
 func TestPluginKeyValueStore(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	pluginId := "testpluginid"
@@ -125,8 +125,65 @@ func TestPluginKeyValueStore(t *testing.T) {
 	assert.Equal(t, []string{"key", "key3", "key4", hashedKey2}, list)
 }
 
+func TestPluginKeyValueStoreCompareAndSet(t *testing.T) {
+	th := Setup(t).InitBasic()
+	defer th.TearDown()
+
+	pluginId := "testpluginid"
+
+	defer func() {
+		assert.Nil(t, th.App.DeletePluginKey(pluginId, "key"))
+	}()
+
+	// Set using Set api for key2
+	assert.Nil(t, th.App.SetPluginKey(pluginId, "key2", []byte("test")))
+	ret, err := th.App.GetPluginKey(pluginId, "key2")
+	assert.Nil(t, err)
+	assert.Equal(t, []byte("test"), ret)
+
+	// Attempt to insert value for key2
+	updated, err := th.App.CompareAndSetPluginKey(pluginId, "key2", nil, []byte("test2"))
+	assert.Nil(t, err)
+	assert.False(t, updated)
+	ret, err = th.App.GetPluginKey(pluginId, "key2")
+	assert.Nil(t, err)
+	assert.Equal(t, []byte("test"), ret)
+
+	// Insert new value for key
+	updated, err = th.App.CompareAndSetPluginKey(pluginId, "key", nil, []byte("test"))
+	assert.Nil(t, err)
+	assert.True(t, updated)
+	ret, err = th.App.GetPluginKey(pluginId, "key")
+	assert.Nil(t, err)
+	assert.Equal(t, []byte("test"), ret)
+
+	// Should fail to insert again
+	updated, err = th.App.CompareAndSetPluginKey(pluginId, "key", nil, []byte("test3"))
+	assert.Nil(t, err)
+	assert.False(t, updated)
+	ret, err = th.App.GetPluginKey(pluginId, "key")
+	assert.Nil(t, err)
+	assert.Equal(t, []byte("test"), ret)
+
+	// Test updating using incorrect old value
+	updated, err = th.App.CompareAndSetPluginKey(pluginId, "key", []byte("oldvalue"), []byte("test3"))
+	assert.Nil(t, err)
+	assert.False(t, updated)
+	ret, err = th.App.GetPluginKey(pluginId, "key")
+	assert.Nil(t, err)
+	assert.Equal(t, []byte("test"), ret)
+
+	// Test updating using correct old value
+	updated, err = th.App.CompareAndSetPluginKey(pluginId, "key", []byte("test"), []byte("test2"))
+	assert.Nil(t, err)
+	assert.True(t, updated)
+	ret, err = th.App.GetPluginKey(pluginId, "key")
+	assert.Nil(t, err)
+	assert.Equal(t, []byte("test2"), ret)
+}
+
 func TestServePluginRequest(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.PluginSettings.Enable = false })
@@ -138,7 +195,7 @@ func TestServePluginRequest(t *testing.T) {
 }
 
 func TestPrivateServePluginRequest(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	testCases := []struct {
@@ -184,7 +241,7 @@ func TestPrivateServePluginRequest(t *testing.T) {
 }
 
 func TestHandlePluginRequest(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	th.App.UpdateConfig(func(cfg *model.Config) {
@@ -231,7 +288,7 @@ func TestHandlePluginRequest(t *testing.T) {
 }
 
 func TestGetPluginStatusesDisabled(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	th.App.UpdateConfig(func(cfg *model.Config) {
@@ -244,7 +301,7 @@ func TestGetPluginStatusesDisabled(t *testing.T) {
 }
 
 func TestGetPluginStatuses(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	th.App.UpdateConfig(func(cfg *model.Config) {

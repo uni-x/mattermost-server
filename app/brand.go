@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 const (

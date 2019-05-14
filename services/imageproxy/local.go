@@ -4,13 +4,16 @@
 package imageproxy
 
 import (
+	"errors"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
-	"strings"
 	"time"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/services/httpservice"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/services/httpservice"
 	"willnorris.com/go/imageproxy"
 )
 
@@ -27,6 +30,8 @@ var imageContentTypes = []string{
 	"image/x-quicktime", "image/x-rgb", "image/x-xbitmap", "image/x-xpixmap", "image/x-xwindowdump",
 }
 
+var ErrLocalRequestFailed = Error{errors.New("imageproxy.LocalBackend: failed to request proxied image")}
+
 type LocalBackend struct {
 	proxy *ImageProxy
 
@@ -36,6 +41,15 @@ type LocalBackend struct {
 
 func makeLocalBackend(proxy *ImageProxy) *LocalBackend {
 	impl := imageproxy.NewProxy(proxy.HTTPService.MakeTransport(false), nil)
+
+	if proxy.Logger != nil {
+		logger, err := proxy.Logger.StdLogAt(mlog.LevelDebug, mlog.String("image_proxy", "local"))
+		if err != nil {
+			mlog.Error("Failed to initialize logger for image proxy", mlog.Err(err))
+		}
+
+		impl.Logger = logger
+	}
 
 	baseURL, err := url.Parse(*proxy.ConfigService.Config().ServiceSettings.SiteURL)
 	if err != nil {
@@ -65,35 +79,28 @@ func (backend *LocalBackend) GetImage(w http.ResponseWriter, r *http.Request, im
 		return
 	}
 
+	w.Header().Set("X-Frame-Options", "deny")
+	w.Header().Set("X-XSS-Protection", "1; mode=block")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+
 	backend.impl.ServeHTTP(w, req)
 }
 
-func (backend *LocalBackend) GetProxiedImageURL(imageURL string) string {
-	siteURL := *backend.proxy.ConfigService.Config().ServiceSettings.SiteURL
-
-	if imageURL == "" || imageURL[0] == '/' || strings.HasPrefix(imageURL, siteURL) {
-		return imageURL
-	}
-
-	return siteURL + "/api/v4/image?url=" + url.QueryEscape(imageURL)
-}
-
-func (backend *LocalBackend) GetUnproxiedImageURL(proxiedURL string) string {
-	siteURL := *backend.proxy.ConfigService.Config().ServiceSettings.SiteURL
-
-	if !strings.HasPrefix(proxiedURL, siteURL+"/api/v4/image?url=") {
-		return proxiedURL
-	}
-
-	parsed, err := url.Parse(proxiedURL)
+func (backend *LocalBackend) GetImageDirect(imageURL string) (io.ReadCloser, string, error) {
+	// The interface to the proxy only exposes a ServeHTTP method, so fake a request to it
+	req, err := http.NewRequest(http.MethodGet, "/"+imageURL, nil)
 	if err != nil {
-		return proxiedURL
+		return nil, "", Error{err}
 	}
 
-	u := parsed.Query()["url"]
-	if len(u) == 0 {
-		return proxiedURL
+	recorder := httptest.NewRecorder()
+
+	backend.impl.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		return nil, "", ErrLocalRequestFailed
 	}
 
-	return u[0]
+	return ioutil.NopCloser(recorder.Body), recorder.Header().Get("Content-Type"), nil
 }

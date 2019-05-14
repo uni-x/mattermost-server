@@ -6,19 +6,16 @@ package einterfaces
 import (
 	"io"
 
-	"fmt"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 type OauthProvider interface {
-	GetUserFromJson(data io.Reader, groups []string) *model.User
-	GetUsersFromJson(data io.Reader) ([]*model.User, error)
+	GetUserFromJson(data io.Reader) *model.User
 }
 
 var oauthProviders = make(map[string]OauthProvider)
 
 func RegisterOauthProvider(name string, newProvider OauthProvider) {
-	fmt.Println("Registering ", name)
 	oauthProviders[name] = newProvider
 }
 

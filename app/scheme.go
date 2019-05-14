@@ -6,7 +6,7 @@ package app
 import (
 	"net/http"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func (a *App) GetScheme(id string) (*model.Scheme, *model.AppError) {
@@ -61,8 +61,10 @@ func (a *App) CreateScheme(scheme *model.Scheme) (*model.Scheme, *model.AppError
 	// Clear any user-provided values for trusted properties.
 	scheme.DefaultTeamAdminRole = ""
 	scheme.DefaultTeamUserRole = ""
+	scheme.DefaultTeamGuestRole = ""
 	scheme.DefaultChannelAdminRole = ""
 	scheme.DefaultChannelUserRole = ""
+	scheme.DefaultChannelGuestRole = ""
 	scheme.CreateAt = 0
 	scheme.UpdateAt = 0
 	scheme.DeleteAt = 0

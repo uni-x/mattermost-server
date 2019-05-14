@@ -9,12 +9,16 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/uni-x/mattermost-server/api4"
-	"github.com/uni-x/mattermost-server/app"
-	"github.com/uni-x/mattermost-server/manualtesting"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/web"
-	"github.com/uni-x/mattermost-server/wsapi"
+	"github.com/mattermost/mattermost-server/api4"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/config"
+	"github.com/mattermost/mattermost-server/manualtesting"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/web"
+	"github.com/mattermost/mattermost-server/wsapi"
+	"github.com/mattermost/viper"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -31,28 +35,31 @@ func init() {
 }
 
 func serverCmdF(command *cobra.Command, args []string) error {
-	config, err := command.Flags().GetString("config")
-	if err != nil {
-		return err
-	}
+	configDSN := viper.GetString("config")
 
 	disableConfigWatch, _ := command.Flags().GetBool("disableconfigwatch")
 	usedPlatform, _ := command.Flags().GetBool("platform")
 
 	interruptChan := make(chan os.Signal, 1)
-	return runServer(config, disableConfigWatch, usedPlatform, interruptChan)
+
+	if err := utils.TranslationsPreInit(); err != nil {
+		return errors.Wrapf(err, "unable to load Mattermost translation files")
+	}
+	configStore, err := config.NewStore(configDSN, !disableConfigWatch)
+	if err != nil {
+		return err
+	}
+
+	return runServer(configStore, disableConfigWatch, usedPlatform, interruptChan)
 }
 
-func runServer(configFileLocation string, disableConfigWatch bool, usedPlatform bool, interruptChan chan os.Signal) error {
+func runServer(configStore config.Store, disableConfigWatch bool, usedPlatform bool, interruptChan chan os.Signal) error {
 	options := []app.Option{
-		app.ConfigFile(configFileLocation),
+		app.ConfigStore(configStore),
 		app.RunJobs,
 		app.JoinCluster,
 		app.StartElasticsearch,
 		app.StartMetrics,
-	}
-	if disableConfigWatch {
-		options = append(options, app.DisableConfigWatch)
 	}
 	server, err := app.NewServer(options...)
 	if err != nil {

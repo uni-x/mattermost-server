@@ -13,17 +13,19 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/utils/fileutils"
 )
 
 var robotsTxt = []byte("User-agent: *\nDisallow: /\n")
 
 func (w *Web) InitStatic() {
 	if *w.ConfigService.Config().ServiceSettings.WebserverMode != "disabled" {
-		utils.UpdateAssetsSubpathFromConfig(w.ConfigService.Config())
+		if err := utils.UpdateAssetsSubpathFromConfig(w.ConfigService.Config()); err != nil {
+			mlog.Error("Failed to update assets subpath from config", mlog.Err(err))
+		}
 
 		staticDir, _ := fileutils.FindDir(model.CLIENT_DIR)
 		mlog.Debug(fmt.Sprintf("Using client directory at %v", staticDir))

@@ -4,27 +4,20 @@
 package commands
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/utils"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/utils/fileutils"
 )
 
 func TestConfigFlag(t *testing.T) {
 	th := Setup()
 	defer th.TearDown()
 	dir := th.TemporaryDirectory()
-
-	timezones := th.App.Timezones.GetSupported()
-	tzConfigPath := filepath.Join(dir, "timezones.json")
-	timezoneData, _ := json.Marshal(timezones)
-	require.NoError(t, ioutil.WriteFile(tzConfigPath, timezoneData, 0600))
 
 	i18n, ok := fileutils.FindDir("i18n")
 	require.True(t, ok)

@@ -3,11 +3,11 @@ package app
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestProcessSlackText(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	if th.App.ProcessSlackText("<!channel> foo <!channel>") != "@channel foo @channel" {
@@ -30,7 +30,7 @@ func TestProcessSlackText(t *testing.T) {
 }
 
 func TestProcessSlackAnnouncement(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	userId := th.BasicUser.Id

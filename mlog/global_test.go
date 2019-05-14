@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/mlog"
 )
 
 func TestLoggingBeforeInitialized(t *testing.T) {
@@ -136,7 +136,7 @@ func TestLoggingAfterInitialized(t *testing.T) {
 
 					actual = strings.Join(actualRows, "\n")
 				}
-				require.Equal(t, testCase.ExpectedLogs, strings.Split(actual, "\n"))
+				require.ElementsMatch(t, testCase.ExpectedLogs, strings.Split(actual, "\n"))
 			}
 		})
 	}

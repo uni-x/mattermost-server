@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestGetImage(t *testing.T) {
@@ -38,7 +38,8 @@ func TestGetImage(t *testing.T) {
 
 		resp, err := th.Client.HttpClient.Do(r)
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+		assert.Equal(t, http.StatusFound, resp.StatusCode)
+		assert.Equal(t, imageURL, resp.Header.Get("Location"))
 	})
 
 	t.Run("atmos/camo", func(t *testing.T) {

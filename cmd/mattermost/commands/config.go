@@ -14,9 +14,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/config"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/viper"
 )
 
 var ConfigCmd = &cobra.Command{
@@ -67,8 +68,19 @@ var ConfigSetCmd = &cobra.Command{
 	RunE:    configSetCmdF,
 }
 
+var MigrateConfigCmd = &cobra.Command{
+	Use:     "migrate",
+	Short:   "Migrate existing config between backends",
+	Long:    "Migrate a file-based configuration to (or from) a database-based configuration. Point the Mattermost server at the target configuration to start using it",
+	Example: `config migrate --from=path/to/config.json --to="postgres://mmuser:mostest@dockerhost:5432/mattermost_test?sslmode=disable&connect_timeout=10"`,
+	RunE:    configMigrateCmdF,
+}
+
 func init() {
 	ConfigSubpathCmd.Flags().String("path", "", "Optional subpath; defaults to value in SiteURL")
+	MigrateConfigCmd.Flags().String("from", "", "Config from which to migrate")
+	MigrateConfigCmd.Flags().String("to", "", "Config to which to migrate")
+	MigrateConfigCmd.MarkFlagRequired("to")
 
 	ConfigCmd.AddCommand(
 		ValidateConfigCmd,
@@ -76,6 +88,7 @@ func init() {
 		ConfigGetCmd,
 		ConfigShowCmd,
 		ConfigSetCmd,
+		MigrateConfigCmd,
 	)
 	RootCmd.AddCommand(ConfigCmd)
 }
@@ -83,31 +96,10 @@ func init() {
 func configValidateCmdF(command *cobra.Command, args []string) error {
 	utils.TranslationsPreInit()
 	model.AppErrorInit(utils.T)
-	filePath, err := command.Flags().GetString("config")
+
+	_, err := getConfigStore(command)
 	if err != nil {
 		return err
-	}
-
-	filePath = fileutils.FindConfigFile(filePath)
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-
-	decoder := json.NewDecoder(file)
-	config := model.Config{}
-	err = decoder.Decode(&config)
-	if err != nil {
-		return err
-	}
-
-	if _, err := file.Stat(); err != nil {
-		return err
-	}
-
-	if err := config.IsValid(); err != nil {
-		return errors.New(utils.T(err.Id))
 	}
 
 	CommandPrettyPrintln("The document is valid")
@@ -137,19 +129,28 @@ func configSubpathCmdF(command *cobra.Command, args []string) error {
 	return nil
 }
 
+func getConfigStore(command *cobra.Command) (config.Store, error) {
+	if err := utils.TranslationsPreInit(); err != nil {
+		return nil, errors.Wrap(err, "failed to initialize i18n")
+	}
+
+	configDSN := viper.GetString("config")
+
+	configStore, err := config.NewStore(configDSN, false)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to initialize config store")
+	}
+
+	return configStore, nil
+}
+
 func configGetCmdF(command *cobra.Command, args []string) error {
-	app, err := InitDBCommandContextCobra(command)
+	configStore, err := getConfigStore(command)
 	if err != nil {
 		return err
 	}
-	defer app.Shutdown()
 
-	// create the model for config
-	// Note: app.Config() returns a pointer, make appropriate changes
-	config := app.Config()
-
-	// get the print config setting and any error if there is
-	out, err := printConfigValues(configToMap(*config), strings.Split(args[0], "."), args[0])
+	out, err := printConfigValues(configToMap(*configStore.Get()), strings.Split(args[0], "."), args[0])
 	if err != nil {
 		return err
 	}
@@ -160,30 +161,23 @@ func configGetCmdF(command *cobra.Command, args []string) error {
 }
 
 func configShowCmdF(command *cobra.Command, args []string) error {
-	app, err := InitDBCommandContextCobra(command)
+	configStore, err := getConfigStore(command)
 	if err != nil {
 		return err
 	}
-	defer app.Shutdown()
 
-	// check that no arguments are given
 	err = cobra.NoArgs(command, args)
 	if err != nil {
 		return err
 	}
 
-	// set up the config object
-	config := app.Config()
-
-	// pretty print
-	fmt.Printf("%s", prettyPrintStruct(*config))
+	fmt.Printf("%s", prettyPrintStruct(*configStore.Get()))
 	return nil
 }
 
 // printConfigValues function prints out the value of the configSettings working recursively or
 // gives an error if config setting is not in the file.
 func printConfigValues(configMap map[string]interface{}, configSetting []string, name string) (string, error) {
-
 	res, ok := configMap[configSetting[0]]
 	if !ok {
 		return "", fmt.Errorf("%s configuration setting is not in the file", name)
@@ -204,48 +198,67 @@ func printConfigValues(configMap map[string]interface{}, configSetting []string,
 }
 
 func configSetCmdF(command *cobra.Command, args []string) error {
-	app, err := InitDBCommandContextCobra(command)
+	configStore, err := getConfigStore(command)
 	if err != nil {
 		return err
 	}
-
-	defer app.Shutdown()
 
 	// args[0] -> holds the config setting that we want to change
 	// args[1:] -> the new value of the config setting
 	configSetting := args[0]
 	newVal := args[1:]
 
-	// Update the config
-
-	// first disable the watchers
-	app.DisableConfigWatch()
-
 	// create the function to update config
-	oldConfig := app.Config()
-	newConfig := app.Config()
+	oldConfig := configStore.Get()
+	newConfig := configStore.Get()
+
 	f := updateConfigValue(configSetting, newVal, oldConfig, newConfig)
+	f(newConfig)
 
-	// update the config
-	app.UpdateConfig(f)
-
-	// Verify new config
-	if err := newConfig.IsValid(); err != nil {
-		return err
-	}
-
-	if err := utils.ValidateLocales(app.Config()); err != nil {
+	// UpdateConfig above would have already fixed these invalid locales, but we check again
+	// in the context of an explicit change to these parameters to avoid saving the fixed
+	// settings in the first place.
+	if changed := config.FixInvalidLocales(newConfig); changed {
 		return errors.New("Invalid locale configuration")
 	}
 
-	// make the changes persist
-	app.PersistConfig()
+	if _, err := configStore.Set(newConfig); err != nil {
+		return errors.Wrap(err, "failed to set config")
+	}
 
-	// reload config
-	app.ReloadConfig()
+	return nil
+}
 
-	// Enable config watchers
-	app.EnableConfigWatch()
+func configMigrateCmdF(command *cobra.Command, args []string) error {
+	// Parse source config; defaults to global --config unless overwritten by --from
+	from, err := command.Flags().GetString("from")
+	if err != nil {
+		return errors.Wrap(err, "failed reading source config parameter")
+	}
+	if from == "" {
+		from = viper.GetString("config")
+	}
+
+	// Parse destination config store - MarkFlagRequired handles errors here
+	to, _ := command.Flags().GetString("to")
+
+	// Get source config store - invalid config will throw error here
+	fromConfigStore, err := config.NewStore(from, false)
+	if err != nil {
+		return errors.Wrap(err, "failed to read --from config")
+	}
+
+	// Get destination config store
+	toConfigStore, err := config.NewStore(to, false)
+	if err != nil {
+		return errors.Wrap(err, "failed to read --to config")
+	}
+
+	// Copy config from source to destination
+	_, err = toConfigStore.Set(fromConfigStore.Get())
+	if err != nil {
+		return errors.Wrap(err, "failed to migrate config")
+	}
 
 	return nil
 }

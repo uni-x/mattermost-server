@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	goi18n "github.com/nicksnyder/go-i18n/i18n"
+	goi18n "github.com/mattermost/go-i18n/i18n"
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func dummyWebsocketHandler(t *testing.T) http.HandlerFunc {
@@ -47,7 +47,7 @@ func registerDummyWebConn(t *testing.T, a *App, addr net.Addr, userId string) *W
 }
 
 func TestHubStopWithMultipleConnections(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	s := httptest.NewServer(http.HandlerFunc(dummyWebsocketHandler(t)))
@@ -65,7 +65,7 @@ func TestHubStopWithMultipleConnections(t *testing.T) {
 // TestHubStopRaceCondition verifies that attempts to use the hub after it has shutdown does not
 // block the caller indefinitely.
 func TestHubStopRaceCondition(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	s := httptest.NewServer(http.HandlerFunc(dummyWebsocketHandler(t)))

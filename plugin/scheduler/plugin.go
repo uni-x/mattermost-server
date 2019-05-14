@@ -4,8 +4,8 @@
 package scheduler
 
 import (
-	"github.com/uni-x/mattermost-server/app"
-	tjobs "github.com/uni-x/mattermost-server/jobs/interfaces"
+	"github.com/mattermost/mattermost-server/app"
+	tjobs "github.com/mattermost/mattermost-server/jobs/interfaces"
 )
 
 type PluginsJobInterfaceImpl struct {
@@ -13,7 +13,7 @@ type PluginsJobInterfaceImpl struct {
 }
 
 func init() {
-	app.RegisterJobsMigrationsJobInterface(func(a *app.App) tjobs.MigrationsJobInterface {
+	app.RegisterJobsPluginsJobInterface(func(a *app.App) tjobs.PluginsJobInterface {
 		return &PluginsJobInterfaceImpl{a}
 	})
 }

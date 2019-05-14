@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func (api *API) InitPost() {
@@ -57,7 +57,7 @@ func createPost(c *Context, w http.ResponseWriter, r *http.Request) {
 		post.CreateAt = 0
 	}
 
-	rp, err := c.App.CreatePostAsUser(c.App.PostWithProxyRemovedFromImageURLs(post), !c.App.Session.IsMobileApp())
+	rp, err := c.App.CreatePostAsUser(c.App.PostWithProxyRemovedFromImageURLs(post), c.App.Session.Id)
 	if err != nil {
 		c.Err = err
 		return
@@ -97,7 +97,9 @@ func createEphemeralPost(c *Context, w http.ResponseWriter, r *http.Request) {
 	rp := c.App.SendEphemeralPost(ephRequest.UserID, c.App.PostWithProxyRemovedFromImageURLs(ephRequest.Post))
 
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(c.App.PreparePostForClient(rp, true).ToJson()))
+	rp = model.AddPostActionCookies(rp, c.App.PostActionCookieSecret())
+	rp = c.App.PreparePostForClient(rp, true)
+	w.Write([]byte(rp.ToJson()))
 }
 
 func getPostsForChannel(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -275,6 +277,24 @@ func deletePost(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	post, err := c.App.GetSinglePost(c.Params.PostId)
+	if err != nil {
+		c.SetPermissionError(model.PERMISSION_DELETE_POST)
+		return
+	}
+
+	if c.App.Session.UserId == post.UserId {
+		if !c.App.SessionHasPermissionToChannel(c.App.Session, post.ChannelId, model.PERMISSION_DELETE_POST) {
+			c.SetPermissionError(model.PERMISSION_DELETE_POST)
+			return
+		}
+	} else {
+		if !c.App.SessionHasPermissionToChannel(c.App.Session, post.ChannelId, model.PERMISSION_DELETE_OTHERS_POSTS) {
+			c.SetPermissionError(model.PERMISSION_DELETE_OTHERS_POSTS)
+			return
+		}
+	}
+
 	if _, err := c.App.DeletePost(c.Params.PostId, c.App.Session.UserId); err != nil {
 		c.Err = err
 		return
@@ -376,7 +396,7 @@ func searchPosts(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	startTime := time.Now()
 
-	results, err := c.App.SearchPostsInTeam(terms, c.App.Session.UserId, c.Params.TeamId, isOrSearch, includeDeletedChannels, int(timeZoneOffset), page, perPage)
+	results, err := c.App.SearchPostsInTeamForUser(terms, c.App.Session.UserId, c.Params.TeamId, isOrSearch, includeDeletedChannels, int(timeZoneOffset), page, perPage)
 
 	elapsedTime := float64(time.Since(startTime)) / float64(time.Second)
 	metrics := c.App.Metrics
@@ -413,9 +433,12 @@ func updatePost(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	// The post being updated in the payload must be the same one as indicated in the URL.
 	if post.Id != c.Params.PostId {
-		c.SetInvalidParam("post_id")
+		c.SetInvalidParam("id")
 		return
 	}
+
+	// Updating the file_ids of a post is not a supported operation and will be ignored
+	post.FileIds = nil
 
 	if !c.App.SessionHasPermissionToChannelByPost(c.App.Session, c.Params.PostId, model.PERMISSION_EDIT_POST) {
 		c.SetPermissionError(model.PERMISSION_EDIT_POST)
@@ -458,6 +481,9 @@ func patchPost(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.SetInvalidParam("post")
 		return
 	}
+
+	// Updating the file_ids of a post is not a supported operation and will be ignored
+	post.FileIds = nil
 
 	if !c.App.SessionHasPermissionToChannelByPost(c.App.Session, c.Params.PostId, model.PERMISSION_EDIT_POST) {
 		c.SetPermissionError(model.PERMISSION_EDIT_POST)

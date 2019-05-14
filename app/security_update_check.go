@@ -11,10 +11,10 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/services/mailservice"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/services/mailservice"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const (
@@ -63,7 +63,9 @@ func (s *Server) DoSecurityUpdateCheck() {
 					<-s.Store.System().Update(systemSecurityLastTime)
 				}
 
-				if ucr := <-s.Store.User().GetTotalUsersCount(); ucr.Err == nil {
+				if ucr := <-s.Store.User().Count(model.UserCountOptions{
+					IncludeDeleted: true,
+				}); ucr.Err == nil {
 					v.Set(PROP_SECURITY_USER_COUNT, strconv.FormatInt(ucr.Data.(int64), 10))
 				}
 

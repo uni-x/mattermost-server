@@ -4,8 +4,8 @@
 package app
 
 import (
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type AutoChannelCreator struct {

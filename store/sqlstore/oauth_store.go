@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/mattermost/gorp"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 type SqlOAuthStore struct {
@@ -164,6 +164,7 @@ func (as SqlOAuthStore) DeleteApp(id string) store.StoreChannel {
 		if err != nil {
 			result.Err = model.NewAppError("SqlOAuthStore.DeleteApp", "store.sql_oauth.delete.open_transaction.app_error", nil, err.Error(), http.StatusInternalServerError)
 		} else {
+			defer finalizeTransaction(transaction)
 			if extrasResult := as.deleteApp(transaction, id); extrasResult.Err != nil {
 				*result = extrasResult
 			}
@@ -172,10 +173,6 @@ func (as SqlOAuthStore) DeleteApp(id string) store.StoreChannel {
 				if err := transaction.Commit(); err != nil {
 					// don't need to rollback here since the transaction is already closed
 					result.Err = model.NewAppError("SqlOAuthStore.DeleteApp", "store.sql_oauth.delete.commit_transaction.app_error", nil, err.Error(), http.StatusInternalServerError)
-				}
-			} else {
-				if err := transaction.Rollback(); err != nil {
-					result.Err = model.NewAppError("SqlOAuthStore.DeleteApp", "store.sql_oauth.delete.rollback_transaction.app_error", nil, err.Error(), http.StatusInternalServerError)
 				}
 			}
 		}

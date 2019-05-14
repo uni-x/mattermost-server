@@ -26,13 +26,14 @@ import (
 	"github.com/disintegration/imaging"
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
-	"github.com/uni-x/mattermost-server/einterfaces"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/plugin"
-	"github.com/uni-x/mattermost-server/services/mfa"
-	"github.com/uni-x/mattermost-server/utils"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/einterfaces"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/plugin"
+	"github.com/mattermost/mattermost-server/services/mfa"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/utils/fileutils"
 )
 
 const (
@@ -66,11 +67,10 @@ func (a *App) CreateUserWithToken(user *model.User, tokenId string) (*model.User
 
 	tokenData := model.MapFromJson(strings.NewReader(token.Extra))
 
-	result = <-a.Srv.Store.Team().Get(tokenData["teamId"])
-	if result.Err != nil {
-		return nil, result.Err
+	team, err := a.Srv.Store.Team().Get(tokenData["teamId"])
+	if err != nil {
+		return nil, err
 	}
-	team := result.Data.(*model.Team)
 
 	user.Email = tokenData["email"]
 	user.EmailVerified = true
@@ -91,46 +91,6 @@ func (a *App) CreateUserWithToken(user *model.User, tokenId string) (*model.User
 	}
 
 	return ruser, nil
-}
-
-func (a *App) CreateUsersFromAzureApp(usersData io.Reader) *model.AppError {
-	provider := einterfaces.GetOauthProvider("office365")
-	if provider == nil {
-		return model.NewAppError("CreateOAuthUser", "api.user.create_oauth_users.not_available.app_error", map[string]interface{}{"Service": "Office365"}, "", http.StatusNotImplemented)
-	}
-
-	users, err := provider.GetUsersFromJson(usersData)
-	if err != nil {
-		return model.NewAppError("CreateUsersFromAzureApp", "api.user.create_users_from_azure_app.app_error", nil, "no such provider", http.StatusNotImplemented)
-	}
-	for _, user := range users {
-		_, err := a.createOAuthUser("office365", user)
-		if err != nil {
-			return model.NewAppError("CreateUsersFromAzureApp", "api.user.create_users_from_azure_app.app_error", nil, "cannot create user", http.StatusNotImplemented)
-		}
-	}
-	return nil
-}
-
-func (a *App) DeleteUsersFromAzureApp(data io.Reader) *model.AppError {
-	decoder := json.NewDecoder(data)
-	var userIds []string
-	err := decoder.Decode(&userIds)
-	if err != nil {
-		return model.NewAppError("DeleteUsersFromAzureApp", "api.user.delete_users_from_azure_app.app_error", nil, err.Error(), http.StatusNotImplemented)
-	}
-
-	for _, userId := range userIds {
-		user, err := a.GetUserByAuth(&userId, "office365")
-		if err != nil {
-			return err
-		}
-		err = a.PermanentDeleteUser(user)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (a *App) CreateUserWithInviteId(user *model.User, inviteId string) (*model.User, *model.AppError) {
@@ -194,36 +154,8 @@ func (a *App) CreateUserFromSignup(user *model.User) (*model.User, *model.AppErr
 		return nil, err
 	}
 
-	result := <-a.Srv.Store.Team().GetAll()
-	if result.Err != nil {
-		return nil, result.Err
-	}
-	teams := result.Data.([]*model.Team)
-	if len(teams) > 0 {
-		team := teams[0]
-		if err := a.JoinUserToTeam(team, ruser, ""); err != nil {
-			return nil, err
-		}
-		a.AddDirectChannels(team.Id, ruser)
-	}
-
 	if err := a.SendWelcomeEmail(ruser.Id, ruser.Email, ruser.EmailVerified, ruser.Locale, a.GetSiteURL()); err != nil {
 		mlog.Error(err.Error())
-	}
-
-	result = <-a.Srv.Store.Channel().GetAllChannels(0,10000,false)
-	if result.Err != nil {
-		return nil, result.Err
-	}
-
-	channels := result.Data.(*model.ChannelListWithTeamData)
-
-	for _, channelWithTeam := range []*model.ChannelWithTeamData(*channels) {
-		_, err := a.AddUserToChannel(ruser, &channelWithTeam.Channel)
-		if err != nil {
-			return nil, err
-		}
-		a.postJoinChannelMessage(ruser, &channelWithTeam.Channel)
 	}
 
 	return ruser, nil
@@ -239,7 +171,9 @@ func (a *App) IsUserSignUpAllowed() *model.AppError {
 
 func (a *App) IsFirstUserAccount() bool {
 	if a.SessionCacheLength() == 0 {
-		cr := <-a.Srv.Store.User().GetTotalUsersCount()
+		cr := <-a.Srv.Store.User().Count(model.UserCountOptions{
+			IncludeDeleted: true,
+		})
 		if cr.Err != nil {
 			mlog.Error(fmt.Sprint(cr.Err))
 			return false
@@ -252,21 +186,72 @@ func (a *App) IsFirstUserAccount() bool {
 	return false
 }
 
+// indexUser fetches the required information to index a user from the database and
+// calls the elasticsearch interface method
+func (a *App) indexUser(user *model.User) *model.AppError {
+	userTeams := <-a.Srv.Store.Team().GetTeamsByUserId(user.Id)
+	if userTeams.Err != nil {
+		return userTeams.Err
+	}
+
+	userTeamsIds := []string{}
+	for _, team := range userTeams.Data.([]*model.Team) {
+		userTeamsIds = append(userTeamsIds, team.Id)
+	}
+
+	userChannelMembers := <-a.Srv.Store.Channel().GetAllChannelMembersForUser(user.Id, false, true)
+	if userChannelMembers.Err != nil {
+		return userChannelMembers.Err
+	}
+
+	userChannelsIds := []string{}
+	for channelId := range userChannelMembers.Data.(map[string]string) {
+		userChannelsIds = append(userChannelsIds, channelId)
+	}
+
+	return a.Elasticsearch.IndexUser(user, userTeamsIds, userChannelsIds)
+}
+
+func (a *App) indexUserFromId(userId string) *model.AppError {
+	user, err := a.GetUser(userId)
+	if err != nil {
+		return err
+	}
+	return a.indexUser(user)
+}
+
+// CreateUser creates a user and sets several fields of the returned User struct to
+// their zero values.
 func (a *App) CreateUser(user *model.User) (*model.User, *model.AppError) {
+	return a.createUserOrGuest(user, false)
+}
+
+// CreateGuest creates a guest and sets several fields of the returned User struct to
+// their zero values.
+func (a *App) CreateGuest(user *model.User) (*model.User, *model.AppError) {
+	return a.createUserOrGuest(user, true)
+}
+
+func (a *App) createUserOrGuest(user *model.User, guest bool) (*model.User, *model.AppError) {
 	if !user.IsLDAPUser() && !user.IsSAMLUser() && !CheckUserDomain(user, *a.Config().TeamSettings.RestrictCreationToDomains) {
 		return nil, model.NewAppError("CreateUser", "api.user.create_user.accepted_domain.app_error", nil, "", http.StatusBadRequest)
 	}
 
-	user.Roles = model.SYSTEM_USER_ROLE_ID + " " + user.Roles
+	user.Roles = model.SYSTEM_USER_ROLE_ID
+	if guest {
+		user.Roles = model.SYSTEM_GUEST_ROLE_ID
+	}
 
 	// Below is a special case where the first user in the entire
 	// system is granted the system_admin role
-	result := <-a.Srv.Store.User().GetTotalUsersCount()
+	result := <-a.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeDeleted: true,
+	})
 	if result.Err != nil {
 		return nil, result.Err
 	}
 	if result.Data.(int64) <= 0 {
-		user.Roles = model.SYSTEM_ADMIN_ROLE_ID + " " + user.Roles
+		user.Roles = model.SYSTEM_ADMIN_ROLE_ID + " " + model.SYSTEM_USER_ROLE_ID
 	}
 
 	if _, ok := utils.GetSupportedLocales()[user.Locale]; !ok {
@@ -292,6 +277,15 @@ func (a *App) CreateUser(user *model.User) (*model.User, *model.AppError) {
 		})
 	}
 
+	esInterface := a.Elasticsearch
+	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableIndexing {
+		a.Srv.Go(func() {
+			if err := a.indexUser(user); err != nil {
+				mlog.Error("Encountered error indexing user", mlog.String("user_id", user.Id), mlog.Err(err))
+			}
+		})
+	}
+
 	return ruser, nil
 }
 
@@ -310,7 +304,7 @@ func (a *App) createUser(user *model.User) (*model.User, *model.AppError) {
 	ruser := result.Data.(*model.User)
 
 	if user.EmailVerified {
-		if err := a.VerifyUserEmail(ruser.Id); err != nil {
+		if err := a.VerifyUserEmail(ruser.Id, user.Email); err != nil {
 			mlog.Error(fmt.Sprintf("Failed to set email verified err=%v", err))
 		}
 	}
@@ -324,7 +318,7 @@ func (a *App) createUser(user *model.User) (*model.User, *model.AppError) {
 	return ruser, nil
 }
 
-func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string, groups []string) (*model.User, *model.AppError) {
+func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string) (*model.User, *model.AppError) {
 	if !*a.Config().TeamSettings.EnableUserCreation {
 		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_user.disabled.app_error", nil, "", http.StatusNotImplemented)
 	}
@@ -333,16 +327,11 @@ func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string,
 	if provider == nil {
 		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.not_available.app_error", map[string]interface{}{"Service": strings.Title(service)}, "", http.StatusNotImplemented)
 	}
-	user := provider.GetUserFromJson(userData, groups)
+	user := provider.GetUserFromJson(userData)
 
 	if user == nil {
 		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.create.app_error", map[string]interface{}{"Service": service}, "", http.StatusInternalServerError)
 	}
-
-	return a.createOAuthUser(service, user)
-}
-
-func (a *App) createOAuthUser(service string, user *model.User) (*model.User, *model.AppError) {
 
 	suchan := a.Srv.Store.User().GetByAuth(user.AuthData, service)
 	euchan := a.Srv.Store.User().GetByEmail(user.Email)
@@ -374,11 +363,19 @@ func (a *App) createOAuthUser(service string, user *model.User) (*model.User, *m
 	if err != nil {
 		return nil, err
 	}
-	err = a.AddUserToAllTeams(user)
-	if err != nil {
-		panic(err)
-		return nil, err
+
+	if len(teamId) > 0 {
+		err = a.AddUserToTeamByTeamId(teamId, user)
+		if err != nil {
+			return nil, err
+		}
+
+		err = a.AddDirectChannels(teamId, user)
+		if err != nil {
+			mlog.Error(err.Error())
+		}
 	}
+
 	return ruser, nil
 }
 
@@ -413,11 +410,7 @@ func (a *App) IsUsernameTaken(name string) bool {
 }
 
 func (a *App) GetUser(userId string) (*model.User, *model.AppError) {
-	result := <-a.Srv.Store.User().Get(userId)
-	if result.Err != nil {
-		return nil, result.Err
-	}
-	return result.Data.(*model.User), nil
+	return a.Srv.Store.User().Get(userId)
 }
 
 func (a *App) GetUserByUsername(username string) (*model.User, *model.AppError) {
@@ -467,8 +460,8 @@ func (a *App) GetUsersPage(options *model.UserGetOptions, asAdmin bool) ([]*mode
 	return a.sanitizeProfiles(users, asAdmin), nil
 }
 
-func (a *App) GetUsersEtag() string {
-	return fmt.Sprintf("%v.%v.%v", (<-a.Srv.Store.User().GetEtagForAllProfiles()).Data.(string), a.Config().PrivacySettings.ShowFullName, a.Config().PrivacySettings.ShowEmailAddress)
+func (a *App) GetUsersEtag(restrictionsHash string) string {
+	return fmt.Sprintf("%v.%v.%v.%v", (<-a.Srv.Store.User().GetEtagForAllProfiles()).Data.(string), a.Config().PrivacySettings.ShowFullName, a.Config().PrivacySettings.ShowEmailAddress, restrictionsHash)
 }
 
 func (a *App) GetUsersInTeam(options *model.UserGetOptions) ([]*model.User, *model.AppError) {
@@ -479,8 +472,8 @@ func (a *App) GetUsersInTeam(options *model.UserGetOptions) ([]*model.User, *mod
 	return result.Data.([]*model.User), nil
 }
 
-func (a *App) GetUsersNotInTeam(teamId string, offset int, limit int) ([]*model.User, *model.AppError) {
-	result := <-a.Srv.Store.User().GetProfilesNotInTeam(teamId, offset, limit)
+func (a *App) GetUsersNotInTeam(teamId string, offset int, limit int, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	result := <-a.Srv.Store.User().GetProfilesNotInTeam(teamId, offset, limit, viewRestrictions)
 	if result.Err != nil {
 		return nil, result.Err
 	}
@@ -496,8 +489,8 @@ func (a *App) GetUsersInTeamPage(options *model.UserGetOptions, asAdmin bool) ([
 	return a.sanitizeProfiles(users, asAdmin), nil
 }
 
-func (a *App) GetUsersNotInTeamPage(teamId string, page int, perPage int, asAdmin bool) ([]*model.User, *model.AppError) {
-	users, err := a.GetUsersNotInTeam(teamId, page*perPage, perPage)
+func (a *App) GetUsersNotInTeamPage(teamId string, page int, perPage int, asAdmin bool, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	users, err := a.GetUsersNotInTeam(teamId, page*perPage, perPage, viewRestrictions)
 	if err != nil {
 		return nil, err
 	}
@@ -505,12 +498,12 @@ func (a *App) GetUsersNotInTeamPage(teamId string, page int, perPage int, asAdmi
 	return a.sanitizeProfiles(users, asAdmin), nil
 }
 
-func (a *App) GetUsersInTeamEtag(teamId string) string {
-	return fmt.Sprintf("%v.%v.%v", (<-a.Srv.Store.User().GetEtagForProfiles(teamId)).Data.(string), a.Config().PrivacySettings.ShowFullName, a.Config().PrivacySettings.ShowEmailAddress)
+func (a *App) GetUsersInTeamEtag(teamId string, restrictionsHash string) string {
+	return fmt.Sprintf("%v.%v.%v.%v", (<-a.Srv.Store.User().GetEtagForProfiles(teamId)).Data.(string), a.Config().PrivacySettings.ShowFullName, a.Config().PrivacySettings.ShowEmailAddress, restrictionsHash)
 }
 
-func (a *App) GetUsersNotInTeamEtag(teamId string) string {
-	return fmt.Sprintf("%v.%v.%v", (<-a.Srv.Store.User().GetEtagForProfilesNotInTeam(teamId)).Data.(string), a.Config().PrivacySettings.ShowFullName, a.Config().PrivacySettings.ShowEmailAddress)
+func (a *App) GetUsersNotInTeamEtag(teamId string, restrictionsHash string) string {
+	return fmt.Sprintf("%v.%v.%v.%v", (<-a.Srv.Store.User().GetEtagForProfilesNotInTeam(teamId)).Data.(string), a.Config().PrivacySettings.ShowFullName, a.Config().PrivacySettings.ShowEmailAddress, restrictionsHash)
 }
 
 func (a *App) GetUsersInChannel(channelId string, offset int, limit int) ([]*model.User, *model.AppError) {
@@ -561,16 +554,16 @@ func (a *App) GetUsersInChannelPageByStatus(channelId string, page int, perPage 
 	return a.sanitizeProfiles(users, asAdmin), nil
 }
 
-func (a *App) GetUsersNotInChannel(teamId string, channelId string, offset int, limit int) ([]*model.User, *model.AppError) {
-	result := <-a.Srv.Store.User().GetProfilesNotInChannel(teamId, channelId, offset, limit)
+func (a *App) GetUsersNotInChannel(teamId string, channelId string, offset int, limit int, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	result := <-a.Srv.Store.User().GetProfilesNotInChannel(teamId, channelId, offset, limit, viewRestrictions)
 	if result.Err != nil {
 		return nil, result.Err
 	}
 	return result.Data.([]*model.User), nil
 }
 
-func (a *App) GetUsersNotInChannelMap(teamId string, channelId string, offset int, limit int, asAdmin bool) (map[string]*model.User, *model.AppError) {
-	users, err := a.GetUsersNotInChannel(teamId, channelId, offset, limit)
+func (a *App) GetUsersNotInChannelMap(teamId string, channelId string, offset int, limit int, asAdmin bool, viewRestrictions *model.ViewUsersRestrictions) (map[string]*model.User, *model.AppError) {
+	users, err := a.GetUsersNotInChannel(teamId, channelId, offset, limit, viewRestrictions)
 	if err != nil {
 		return nil, err
 	}
@@ -585,8 +578,8 @@ func (a *App) GetUsersNotInChannelMap(teamId string, channelId string, offset in
 	return userMap, nil
 }
 
-func (a *App) GetUsersNotInChannelPage(teamId string, channelId string, page int, perPage int, asAdmin bool) ([]*model.User, *model.AppError) {
-	users, err := a.GetUsersNotInChannel(teamId, channelId, page*perPage, perPage)
+func (a *App) GetUsersNotInChannelPage(teamId string, channelId string, page int, perPage int, asAdmin bool, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	users, err := a.GetUsersNotInChannel(teamId, channelId, page*perPage, perPage, viewRestrictions)
 	if err != nil {
 		return nil, err
 	}
@@ -594,8 +587,8 @@ func (a *App) GetUsersNotInChannelPage(teamId string, channelId string, page int
 	return a.sanitizeProfiles(users, asAdmin), nil
 }
 
-func (a *App) GetUsersWithoutTeamPage(page int, perPage int, asAdmin bool) ([]*model.User, *model.AppError) {
-	users, err := a.GetUsersWithoutTeam(page*perPage, perPage)
+func (a *App) GetUsersWithoutTeamPage(page int, perPage int, asAdmin bool, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	users, err := a.GetUsersWithoutTeam(page*perPage, perPage, viewRestrictions)
 	if err != nil {
 		return nil, err
 	}
@@ -603,24 +596,42 @@ func (a *App) GetUsersWithoutTeamPage(page int, perPage int, asAdmin bool) ([]*m
 	return a.sanitizeProfiles(users, asAdmin), nil
 }
 
-func (a *App) GetUsersWithoutTeam(offset int, limit int) ([]*model.User, *model.AppError) {
-	result := <-a.Srv.Store.User().GetProfilesWithoutTeam(offset, limit)
+func (a *App) GetUsersWithoutTeam(offset int, limit int, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	result := <-a.Srv.Store.User().GetProfilesWithoutTeam(offset, limit, viewRestrictions)
 	if result.Err != nil {
 		return nil, result.Err
 	}
 	return result.Data.([]*model.User), nil
 }
 
-func (a *App) GetUsersByIds(userIds []string, asAdmin bool) ([]*model.User, *model.AppError) {
-	result := <-a.Srv.Store.User().GetProfileByIds(userIds, true)
+// GetTeamGroupUsers returns the users who are associated to the team via GroupTeams and GroupMembers.
+func (a *App) GetTeamGroupUsers(teamID string) ([]*model.User, *model.AppError) {
+	result := <-a.Srv.Store.User().GetTeamGroupUsers(teamID)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+	return result.Data.([]*model.User), nil
+}
+
+// GetChannelGroupUsers returns the users who are associated to the channel via GroupChannels and GroupMembers.
+func (a *App) GetChannelGroupUsers(channelID string) ([]*model.User, *model.AppError) {
+	result := <-a.Srv.Store.User().GetChannelGroupUsers(channelID)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+	return result.Data.([]*model.User), nil
+}
+
+func (a *App) GetUsersByIds(userIds []string, asAdmin bool, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	result := <-a.Srv.Store.User().GetProfileByIds(userIds, viewRestrictions == nil, viewRestrictions)
 	if result.Err != nil {
 		return nil, result.Err
 	}
 	return a.sanitizeProfiles(result.Data.([]*model.User), asAdmin), nil
 }
 
-func (a *App) GetUsersByUsernames(usernames []string, asAdmin bool) ([]*model.User, *model.AppError) {
-	result := <-a.Srv.Store.User().GetProfilesByUsernames(usernames, "")
+func (a *App) GetUsersByUsernames(usernames []string, asAdmin bool, viewRestrictions *model.ViewUsersRestrictions) ([]*model.User, *model.AppError) {
+	result := <-a.Srv.Store.User().GetProfilesByUsernames(usernames, viewRestrictions)
 	if result.Err != nil {
 		return nil, result.Err
 	}
@@ -652,11 +663,10 @@ func (a *App) GenerateMfaSecret(userId string) (*model.MfaSecret, *model.AppErro
 }
 
 func (a *App) ActivateMfa(userId, token string) *model.AppError {
-	result := <-a.Srv.Store.User().Get(userId)
-	if result.Err != nil {
-		return result.Err
+	user, err := a.Srv.Store.User().Get(userId)
+	if err != nil {
+		return err
 	}
-	user := result.Data.(*model.User)
 
 	if len(user.AuthService) > 0 && user.AuthService != model.USER_AUTH_SERVICE_LDAP {
 		return model.NewAppError("ActivateMfa", "api.user.activate_mfa.email_and_ldap_only.app_error", nil, "", http.StatusBadRequest)
@@ -764,7 +774,7 @@ func getFont(initialFont string) (*truetype.Font, error) {
 
 func (a *App) GetProfileImage(user *model.User) ([]byte, bool, *model.AppError) {
 	if len(*a.Config().FileSettings.DriverName) == 0 {
-		img, appErr := CreateProfileImage(user.Username, user.Id, *a.Config().FileSettings.InitialFont)
+		img, appErr := a.GetDefaultProfileImage(user)
 		if appErr != nil {
 			return nil, false, appErr
 		}
@@ -775,7 +785,7 @@ func (a *App) GetProfileImage(user *model.User) ([]byte, bool, *model.AppError) 
 
 	data, err := a.ReadFile(path)
 	if err != nil {
-		img, appErr := CreateProfileImage(user.Username, user.Id, *a.Config().FileSettings.InitialFont)
+		img, appErr := a.GetDefaultProfileImage(user)
 		if appErr != nil {
 			return nil, false, appErr
 		}
@@ -792,7 +802,15 @@ func (a *App) GetProfileImage(user *model.User) ([]byte, bool, *model.AppError) 
 }
 
 func (a *App) GetDefaultProfileImage(user *model.User) ([]byte, *model.AppError) {
-	img, appErr := CreateProfileImage(user.Username, user.Id, *a.Config().FileSettings.InitialFont)
+	var img []byte
+	var appErr *model.AppError
+
+	if user.IsBot {
+		img = model.BotDefaultImage
+		appErr = nil
+	} else {
+		img, appErr = CreateProfileImage(user.Username, user.Id, *a.Config().FileSettings.InitialFont)
+	}
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -800,7 +818,7 @@ func (a *App) GetDefaultProfileImage(user *model.User) ([]byte, *model.AppError)
 }
 
 func (a *App) SetDefaultProfileImage(user *model.User) *model.AppError {
-	img, appErr := CreateProfileImage(user.Username, user.Id, *a.Config().FileSettings.InitialFont)
+	img, appErr := a.GetDefaultProfileImage(user)
 	if appErr != nil {
 		return appErr
 	}
@@ -918,7 +936,7 @@ func (a *App) UpdatePasswordAsUser(userId, currentPassword, newPassword string) 
 		return err
 	}
 
-	if err := a.doubleCheckPassword(user, currentPassword); err != nil {
+	if err := a.DoubleCheckPassword(user, currentPassword); err != nil {
 		if err.Id == "api.user.check_user_password.invalid.app_error" {
 			err = model.NewAppError("updatePassword", "api.user.update_password.incorrect.app_error", nil, "", http.StatusBadRequest)
 		}
@@ -928,6 +946,40 @@ func (a *App) UpdatePasswordAsUser(userId, currentPassword, newPassword string) 
 	T := utils.GetUserTranslations(user.Locale)
 
 	return a.UpdatePasswordSendEmail(user, newPassword, T("api.user.update_password.menu"))
+}
+
+func (a *App) userDeactivated(user *model.User) *model.AppError {
+	if err := a.RevokeAllSessions(user.Id); err != nil {
+		return err
+	}
+
+	a.SetStatusOffline(user.Id, false)
+
+	if *a.Config().ServiceSettings.DisableBotsWhenOwnerIsDeactivated {
+		a.disableUserBots(user.Id)
+	}
+
+	return nil
+}
+
+func (a *App) invalidateUserChannelMembersCaches(user *model.User) *model.AppError {
+	teamsForUser, err := a.GetTeamsForUser(user.Id)
+	if err != nil {
+		return err
+	}
+
+	for _, team := range teamsForUser {
+		channelsForUser, err := a.GetChannelsForUser(team.Id, user.Id, false)
+		if err != nil {
+			return err
+		}
+
+		for _, channel := range *channelsForUser {
+			a.InvalidateCacheForChannelMembers(channel.Id)
+		}
+	}
+
+	return nil
 }
 
 func (a *App) UpdateActive(user *model.User, active bool) (*model.User, *model.AppError) {
@@ -941,34 +993,15 @@ func (a *App) UpdateActive(user *model.User, active bool) (*model.User, *model.A
 	if result.Err != nil {
 		return nil, result.Err
 	}
-
-	if user.DeleteAt > 0 {
-		if err := a.RevokeAllSessions(user.Id); err != nil {
-			return nil, err
-		}
-	}
-
 	ruser := result.Data.([2]*model.User)[0]
 
 	if !active {
-		a.SetStatusOffline(ruser.Id, false)
-	}
-
-	teamsForUser, err := a.GetTeamsForUser(user.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, team := range teamsForUser {
-		channelsForUser, err := a.GetChannelsForUser(team.Id, user.Id, false)
-		if err != nil {
+		if err := a.userDeactivated(ruser); err != nil {
 			return nil, err
 		}
-
-		for _, channel := range *channelsForUser {
-			a.InvalidateCacheForChannelMembers(channel.Id)
-		}
 	}
+
+	a.invalidateUserChannelMembersCaches(user)
 
 	a.sendUpdatedUserEvent(*ruser)
 
@@ -1060,15 +1093,29 @@ func (a *App) sendUpdatedUserEvent(user model.User) {
 }
 
 func (a *App) UpdateUser(user *model.User, sendNotifications bool) (*model.User, *model.AppError) {
+	prev, err := a.Srv.Store.User().Get(user.Id)
+	if err != nil {
+		return nil, err
+	}
+
 	if !CheckUserDomain(user, *a.Config().TeamSettings.RestrictCreationToDomains) {
-		result := <-a.Srv.Store.User().Get(user.Id)
-		if result.Err != nil {
-			return nil, result.Err
-		}
-		prev := result.Data.(*model.User)
 		if !prev.IsLDAPUser() && !prev.IsSAMLUser() && user.Email != prev.Email {
 			return nil, model.NewAppError("UpdateUser", "api.user.create_user.accepted_domain.app_error", nil, "", http.StatusBadRequest)
 		}
+	}
+
+	// Don't set new eMail on user account if email verification is required, this will be done as a post-verification action
+	// to avoid users being able to set non-controlled eMails as their account email
+	newEmail := ""
+	if *a.Config().EmailSettings.RequireEmailVerification && prev.Email != user.Email {
+		newEmail = user.Email
+
+		_, err := a.GetUserByEmail(newEmail)
+		if err == nil {
+			return nil, model.NewAppError("UpdateUser", "store.sql_user.update.email_taken.app_error", nil, "user_id="+user.Id, http.StatusBadRequest)
+		}
+
+		user.Email = prev.Email
 	}
 
 	result := <-a.Srv.Store.User().Update(user, false)
@@ -1078,16 +1125,16 @@ func (a *App) UpdateUser(user *model.User, sendNotifications bool) (*model.User,
 	rusers := result.Data.([2]*model.User)
 
 	if sendNotifications {
-		if rusers[0].Email != rusers[1].Email {
-			a.Srv.Go(func() {
-				if err := a.SendEmailChangeEmail(rusers[1].Email, rusers[0].Email, rusers[0].Locale, a.GetSiteURL()); err != nil {
-					mlog.Error(err.Error())
-				}
-			})
-
+		if rusers[0].Email != rusers[1].Email || newEmail != "" {
 			if *a.Config().EmailSettings.RequireEmailVerification {
 				a.Srv.Go(func() {
-					if err := a.SendEmailVerification(rusers[0]); err != nil {
+					if err := a.SendEmailVerification(rusers[0], newEmail); err != nil {
+						mlog.Error(err.Error())
+					}
+				})
+			} else {
+				a.Srv.Go(func() {
+					if err := a.SendEmailChangeEmail(rusers[1].Email, rusers[0].Email, rusers[0].Locale, a.GetSiteURL()); err != nil {
 						mlog.Error(err.Error())
 					}
 				})
@@ -1104,6 +1151,15 @@ func (a *App) UpdateUser(user *model.User, sendNotifications bool) (*model.User,
 	}
 
 	a.InvalidateCacheForUser(user.Id)
+
+	esInterface := a.Elasticsearch
+	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableIndexing {
+		a.Srv.Go(func() {
+			if err := a.indexUser(user); err != nil {
+				mlog.Error("Encountered error indexing user", mlog.String("user_id", user.Id), mlog.Err(err))
+			}
+		})
+	}
 
 	return rusers[0], nil
 }
@@ -1209,9 +1265,23 @@ func (a *App) ResetPasswordFromToken(userSuppliedTokenString, newPassword string
 		return model.NewAppError("resetPassword", "api.user.reset_password.link_expired.app_error", nil, "", http.StatusBadRequest)
 	}
 
-	user, err := a.GetUser(token.Extra)
+	tokenData := struct {
+		UserId string
+		Email  string
+	}{}
+
+	err2 := json.Unmarshal([]byte(token.Extra), &tokenData)
+	if err2 != nil {
+		return model.NewAppError("resetPassword", "api.user.reset_password.token_parse.error", nil, "", http.StatusInternalServerError)
+	}
+
+	user, err := a.GetUser(tokenData.UserId)
 	if err != nil {
 		return err
+	}
+
+	if user.Email != tokenData.Email {
+		return model.NewAppError("resetPassword", "api.user.reset_password.link_expired.app_error", nil, "", http.StatusBadRequest)
 	}
 
 	if user.IsSSOUser() {
@@ -1241,7 +1311,7 @@ func (a *App) SendPasswordReset(email string, siteURL string) (bool, *model.AppE
 		return false, model.NewAppError("SendPasswordReset", "api.user.send_password_reset.sso.app_error", nil, "userId="+user.Id, http.StatusBadRequest)
 	}
 
-	token, err := a.CreatePasswordRecoveryToken(user.Id)
+	token, err := a.CreatePasswordRecoveryToken(user.Id, user.Email)
 	if err != nil {
 		return false, err
 	}
@@ -1249,8 +1319,22 @@ func (a *App) SendPasswordReset(email string, siteURL string) (bool, *model.AppE
 	return a.SendPasswordResetEmail(user.Email, token, user.Locale, siteURL)
 }
 
-func (a *App) CreatePasswordRecoveryToken(userId string) (*model.Token, *model.AppError) {
-	token := model.NewToken(TOKEN_TYPE_PASSWORD_RECOVERY, userId)
+func (a *App) CreatePasswordRecoveryToken(userId, email string) (*model.Token, *model.AppError) {
+
+	tokenExtra := struct {
+		UserId string
+		Email  string
+	}{
+		userId,
+		email,
+	}
+	jsonData, err := json.Marshal(tokenExtra)
+
+	if err != nil {
+		return nil, model.NewAppError("CreatePasswordRecoveryToken", "api.user.create_password_token.error", nil, "", http.StatusInternalServerError)
+	}
+
+	token := model.NewToken(TOKEN_TYPE_PASSWORD_RECOVERY, string(jsonData))
 
 	if result := <-a.Srv.Store.Token().Save(token); result.Err != nil {
 		return nil, result.Err
@@ -1339,16 +1423,16 @@ func (a *App) PermanentDeleteUser(user *model.User) *model.AppError {
 		return result.Err
 	}
 
-	if result := <-a.Srv.Store.Webhook().PermanentDeleteIncomingByUser(user.Id); result.Err != nil {
-		return result.Err
+	if err := a.Srv.Store.Webhook().PermanentDeleteIncomingByUser(user.Id); err != nil {
+		return err
 	}
 
-	if result := <-a.Srv.Store.Webhook().PermanentDeleteOutgoingByUser(user.Id); result.Err != nil {
-		return result.Err
+	if err := a.Srv.Store.Webhook().PermanentDeleteOutgoingByUser(user.Id); err != nil {
+		return err
 	}
 
-	if result := <-a.Srv.Store.Command().PermanentDeleteByUser(user.Id); result.Err != nil {
-		return result.Err
+	if err := a.Srv.Store.Command().PermanentDeleteByUser(user.Id); err != nil {
+		return err
 	}
 
 	if result := <-a.Srv.Store.Preference().PermanentDeleteByUser(user.Id); result.Err != nil {
@@ -1404,8 +1488,8 @@ func (a *App) PermanentDeleteUser(user *model.User) *model.AppError {
 		return result.Err
 	}
 
-	if result := <-a.Srv.Store.Audit().PermanentDeleteByUser(user.Id); result.Err != nil {
-		return result.Err
+	if err := a.Srv.Store.Audit().PermanentDeleteByUser(user.Id); err != nil {
+		return err
 	}
 
 	if result := <-a.Srv.Store.Team().RemoveAllMembersByUser(user.Id); result.Err != nil {
@@ -1413,6 +1497,15 @@ func (a *App) PermanentDeleteUser(user *model.User) *model.AppError {
 	}
 
 	mlog.Warn(fmt.Sprintf("Permanently deleted account %v id=%v", user.Email, user.Id), mlog.String("user_id", user.Id))
+
+	esInterface := a.Elasticsearch
+	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableIndexing {
+		a.Srv.Go(func() {
+			if err := a.Elasticsearch.DeleteUser(user); err != nil {
+				mlog.Error("Encountered error deleting user", mlog.String("user_id", user.Id), mlog.Err(err))
+			}
+		})
+	}
 
 	return nil
 }
@@ -1430,16 +1523,16 @@ func (a *App) PermanentDeleteAllUsers() *model.AppError {
 	return nil
 }
 
-func (a *App) SendEmailVerification(user *model.User) *model.AppError {
-	token, err := a.CreateVerifyEmailToken(user.Id)
+func (a *App) SendEmailVerification(user *model.User, newEmail string) *model.AppError {
+	token, err := a.CreateVerifyEmailToken(user.Id, newEmail)
 	if err != nil {
 		return err
 	}
 
 	if _, err := a.GetStatus(user.Id); err != nil {
-		return a.SendVerifyEmail(user.Email, user.Locale, a.GetSiteURL(), token.Token)
+		return a.SendVerifyEmail(newEmail, user.Locale, a.GetSiteURL(), token.Token)
 	}
-	return a.SendEmailChangeVerifyEmail(user.Email, user.Locale, a.GetSiteURL(), token.Token)
+	return a.SendEmailChangeVerifyEmail(newEmail, user.Locale, a.GetSiteURL(), token.Token)
 }
 
 func (a *App) VerifyEmailFromToken(userSuppliedTokenString string) *model.AppError {
@@ -1448,11 +1541,36 @@ func (a *App) VerifyEmailFromToken(userSuppliedTokenString string) *model.AppErr
 		return err
 	}
 	if model.GetMillis()-token.CreateAt >= PASSWORD_RECOVER_EXPIRY_TIME {
-		return model.NewAppError("resetPassword", "api.user.reset_password.link_expired.app_error", nil, "", http.StatusBadRequest)
+		return model.NewAppError("VerifyEmailFromToken", "api.user.verify_email.link_expired.app_error", nil, "", http.StatusBadRequest)
 	}
-	if err := a.VerifyUserEmail(token.Extra); err != nil {
+
+	tokenData := struct {
+		UserId string
+		Email  string
+	}{}
+
+	err2 := json.Unmarshal([]byte(token.Extra), &tokenData)
+	if err2 != nil {
+		return model.NewAppError("VerifyEmailFromToken", "api.user.verify_email.token_parse.error", nil, "", http.StatusInternalServerError)
+	}
+
+	user, err := a.GetUser(tokenData.UserId)
+	if err != nil {
 		return err
 	}
+
+	if err := a.VerifyUserEmail(tokenData.UserId, tokenData.Email); err != nil {
+		return err
+	}
+
+	if user.Email != tokenData.Email {
+		a.Srv.Go(func() {
+			if err := a.SendEmailChangeEmail(user.Email, tokenData.Email, user.Locale, a.GetSiteURL()); err != nil {
+				mlog.Error(err.Error())
+			}
+		})
+	}
+
 	if err := a.DeleteToken(token); err != nil {
 		mlog.Error(err.Error())
 	}
@@ -1460,8 +1578,21 @@ func (a *App) VerifyEmailFromToken(userSuppliedTokenString string) *model.AppErr
 	return nil
 }
 
-func (a *App) CreateVerifyEmailToken(userId string) (*model.Token, *model.AppError) {
-	token := model.NewToken(TOKEN_TYPE_VERIFY_EMAIL, userId)
+func (a *App) CreateVerifyEmailToken(userId string, newEmail string) (*model.Token, *model.AppError) {
+	tokenExtra := struct {
+		UserId string
+		Email  string
+	}{
+		userId,
+		newEmail,
+	}
+	jsonData, err := json.Marshal(tokenExtra)
+
+	if err != nil {
+		return nil, model.NewAppError("CreateVerifyEmailToken", "api.user.create_email_token.error", nil, "", http.StatusInternalServerError)
+	}
+
+	token := model.NewToken(TOKEN_TYPE_VERIFY_EMAIL, string(jsonData))
 
 	if result := <-a.Srv.Store.Token().Save(token); result.Err != nil {
 		return nil, result.Err
@@ -1482,8 +1613,12 @@ func (a *App) GetVerifyEmailToken(token string) (*model.Token, *model.AppError) 
 	return rtoken, nil
 }
 
-func (a *App) GetTotalUsersStats() (*model.UsersStats, *model.AppError) {
-	result := <-a.Srv.Store.User().GetTotalUsersCount()
+// GetTotalUsersStats is used for the DM list total
+func (a *App) GetTotalUsersStats(viewRestrictions *model.ViewUsersRestrictions) (*model.UsersStats, *model.AppError) {
+	result := <-a.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeBotAccounts: true,
+		ViewRestrictions:   viewRestrictions,
+	})
 	if result.Err != nil {
 		return nil, result.Err
 	}
@@ -1493,8 +1628,22 @@ func (a *App) GetTotalUsersStats() (*model.UsersStats, *model.AppError) {
 	return stats, nil
 }
 
-func (a *App) VerifyUserEmail(userId string) *model.AppError {
-	return (<-a.Srv.Store.User().VerifyEmail(userId)).Err
+func (a *App) VerifyUserEmail(userId, email string) *model.AppError {
+	err := (<-a.Srv.Store.User().VerifyEmail(userId, email)).Err
+
+	if err != nil {
+		return err
+	}
+
+	user, err := a.GetUser(userId)
+
+	if err != nil {
+		return err
+	}
+
+	a.sendUpdatedUserEvent(*user)
+
+	return nil
 }
 
 func (a *App) SearchUsers(props *model.UserSearch, options *model.UserSearchOptions) ([]*model.User, *model.AppError) {
@@ -1542,7 +1691,29 @@ func (a *App) SearchUsersNotInChannel(teamId string, channelId string, term stri
 }
 
 func (a *App) SearchUsersInTeam(teamId string, term string, options *model.UserSearchOptions) ([]*model.User, *model.AppError) {
-	result := <-a.Srv.Store.User().Search(teamId, term, options)
+	var result store.StoreResult
+
+	esInterface := a.Elasticsearch
+	license := a.License()
+	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableAutocomplete && license != nil && *license.Features.Elasticsearch {
+		listOfAllowedChannels, err := a.GetViewUsersRestrictionsForTeam(a.Session.UserId, teamId)
+		if err != nil {
+			return nil, err
+		}
+		if len(listOfAllowedChannels) == 0 {
+			return []*model.User{}, nil
+		}
+
+		usersIds, err := a.Elasticsearch.SearchUsersInTeam(teamId, listOfAllowedChannels, term, options)
+		if err != nil {
+			return nil, err
+		}
+
+		result = <-a.Srv.Store.User().GetProfileByIds(usersIds, false, nil)
+	} else {
+		result = <-a.Srv.Store.User().Search(teamId, term, options)
+	}
+
 	if result.Err != nil {
 		return nil, result.Err
 	}
@@ -1584,8 +1755,34 @@ func (a *App) SearchUsersWithoutTeam(term string, options *model.UserSearchOptio
 }
 
 func (a *App) AutocompleteUsersInChannel(teamId string, channelId string, term string, options *model.UserSearchOptions) (*model.UserAutocompleteInChannel, *model.AppError) {
-	uchan := a.Srv.Store.User().SearchInChannel(channelId, term, options)
-	nuchan := a.Srv.Store.User().SearchNotInChannel(teamId, channelId, term, options)
+	var uchan, nuchan store.StoreChannel
+
+	esInterface := a.Elasticsearch
+	license := a.License()
+	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableAutocomplete && license != nil && *license.Features.Elasticsearch {
+		listOfAllowedChannels, err := a.getListOfAllowedChannelsForTeam(teamId, options.ViewRestrictions)
+		if err != nil {
+			return nil, err
+		}
+		if len(listOfAllowedChannels) == 0 {
+			return &model.UserAutocompleteInChannel{}, nil
+		}
+		uchanIds := []string{}
+		nuchanIds := []string{}
+		if !strings.Contains(strings.Join(listOfAllowedChannels, "."), channelId) {
+			nuchanIds, err = a.Elasticsearch.SearchUsersInTeam(teamId, listOfAllowedChannels, term, options)
+		} else {
+			uchanIds, nuchanIds, err = a.Elasticsearch.SearchUsersInChannel(teamId, channelId, listOfAllowedChannels, term, options)
+		}
+		if err != nil {
+			return nil, err
+		}
+		uchan = a.Srv.Store.User().GetProfileByIds(uchanIds, false, nil)
+		nuchan = a.Srv.Store.User().GetProfileByIds(nuchanIds, false, nil)
+	} else {
+		uchan = a.Srv.Store.User().SearchInChannel(channelId, term, options)
+		nuchan = a.Srv.Store.User().SearchNotInChannel(teamId, channelId, term, options)
+	}
 
 	autocomplete := &model.UserAutocompleteInChannel{}
 
@@ -1618,8 +1815,29 @@ func (a *App) AutocompleteUsersInChannel(teamId string, channelId string, term s
 
 func (a *App) AutocompleteUsersInTeam(teamId string, term string, options *model.UserSearchOptions) (*model.UserAutocompleteInTeam, *model.AppError) {
 	autocomplete := &model.UserAutocompleteInTeam{}
+	var result store.StoreResult
 
-	result := <-a.Srv.Store.User().Search(teamId, term, options)
+	esInterface := a.Elasticsearch
+	license := a.License()
+	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableAutocomplete && license != nil && *license.Features.Elasticsearch {
+		listOfAllowedChannels, err := a.getListOfAllowedChannelsForTeam(teamId, options.ViewRestrictions)
+		if err != nil {
+			return nil, err
+		}
+		if len(listOfAllowedChannels) == 0 {
+			return &model.UserAutocompleteInTeam{}, nil
+		}
+
+		usersIds, err := a.Elasticsearch.SearchUsersInTeam(teamId, listOfAllowedChannels, term, options)
+		if err != nil {
+			return nil, err
+		}
+
+		result = <-a.Srv.Store.User().GetProfileByIds(usersIds, false, nil)
+	} else {
+		result = <-a.Srv.Store.User().Search(teamId, term, options)
+	}
+
 	if result.Err != nil {
 		return nil, result.Err
 	}
@@ -1634,8 +1852,8 @@ func (a *App) AutocompleteUsersInTeam(teamId string, term string, options *model
 	return autocomplete, nil
 }
 
-func (a *App) UpdateOAuthUserAttrs(userData io.Reader, user *model.User, provider einterfaces.OauthProvider, service string, groups []string) *model.AppError {
-	oauthUser := provider.GetUserFromJson(userData, groups)
+func (a *App) UpdateOAuthUserAttrs(userData io.Reader, user *model.User, provider einterfaces.OauthProvider, service string) *model.AppError {
+	oauthUser := provider.GetUserFromJson(userData)
 	if oauthUser == nil {
 		return model.NewAppError("UpdateOAuthUserAttrs", "api.user.update_oauth_user_attrs.get_user.app_error", map[string]interface{}{"Service": service}, "", http.StatusBadRequest)
 	}
@@ -1676,7 +1894,243 @@ func (a *App) UpdateOAuthUserAttrs(userData io.Reader, user *model.User, provide
 
 		user = result.Data.([2]*model.User)[0]
 		a.InvalidateCacheForUser(user.Id)
+
+		esInterface := a.Elasticsearch
+		if esInterface != nil && *a.Config().ElasticsearchSettings.EnableIndexing {
+			a.Srv.Go(func() {
+				if err := a.indexUser(user); err != nil {
+					mlog.Error("Encountered error indexing user", mlog.String("user_id", user.Id), mlog.Err(err))
+				}
+			})
+		}
 	}
 
 	return nil
+}
+
+func (a *App) RestrictUsersGetByPermissions(userId string, options *model.UserGetOptions) (*model.UserGetOptions, *model.AppError) {
+	restrictions, err := a.GetViewUsersRestrictions(userId)
+	if err != nil {
+		return nil, err
+	}
+
+	options.ViewRestrictions = restrictions
+	return options, nil
+}
+
+// FilterNonGroupTeamMembers returns the subset of the given user IDs of the users who are not members of groups
+// associated to the team.
+func (a *App) FilterNonGroupTeamMembers(userIDs []string, team *model.Team) ([]string, error) {
+	teamGroupUsers, err := a.GetTeamGroupUsers(team.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	// possible if no groups associated or no group members in any of the associated groups
+	if len(teamGroupUsers) == 0 {
+		return userIDs, nil
+	}
+
+	nonMemberIDs := []string{}
+
+	for _, userID := range userIDs {
+		userIsMember := false
+
+		for _, pu := range teamGroupUsers {
+			if pu.Id == userID {
+				userIsMember = true
+				break
+			}
+		}
+
+		if !userIsMember {
+			nonMemberIDs = append(nonMemberIDs, userID)
+		}
+	}
+
+	return nonMemberIDs, nil
+}
+
+// FilterNonGroupChannelMembers returns the subset of the given user IDs of the users who are not members of groups
+// associated to the channel.
+func (a *App) FilterNonGroupChannelMembers(userIDs []string, channel *model.Channel) ([]string, error) {
+	channelGroupUsers, err := a.GetChannelGroupUsers(channel.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	// possible if no groups associated or no group members in any of the associated groups
+	if len(channelGroupUsers) == 0 {
+		return userIDs, nil
+	}
+
+	nonMemberIDs := []string{}
+
+	for _, userID := range userIDs {
+		userIsMember := false
+
+		for _, pu := range channelGroupUsers {
+			if pu.Id == userID {
+				userIsMember = true
+				break
+			}
+		}
+
+		if !userIsMember {
+			nonMemberIDs = append(nonMemberIDs, userID)
+		}
+	}
+
+	return nonMemberIDs, nil
+}
+
+func (a *App) RestrictUsersSearchByPermissions(userId string, options *model.UserSearchOptions) (*model.UserSearchOptions, *model.AppError) {
+	restrictions, err := a.GetViewUsersRestrictions(userId)
+	if err != nil {
+		return nil, err
+	}
+
+	options.ViewRestrictions = restrictions
+	return options, nil
+}
+
+func (a *App) UserCanSeeOtherUser(userId string, otherUserId string) (bool, *model.AppError) {
+	if userId == otherUserId {
+		return true, nil
+	}
+
+	restrictions, err := a.GetViewUsersRestrictions(userId)
+	if err != nil {
+		return false, err
+	}
+
+	if restrictions == nil {
+		return true, nil
+	}
+
+	if len(restrictions.Teams) > 0 {
+		result, err := a.userBelongsToTeams(otherUserId, restrictions.Teams)
+		if err != nil {
+			return false, err
+		}
+		if result {
+			return true, nil
+		}
+	}
+
+	if len(restrictions.Channels) > 0 {
+		result, err := a.userBelongsToChannels(otherUserId, restrictions.Channels)
+		if err != nil {
+			return false, err
+		}
+		if result {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (a *App) userBelongsToTeams(userId string, teamIds []string) (bool, *model.AppError) {
+	result := <-a.Srv.Store.Team().UserBelongsToTeams(userId, teamIds)
+	if result.Err != nil {
+		return false, result.Err
+	}
+	return result.Data.(bool), nil
+}
+
+func (a *App) userBelongsToChannels(userId string, channelIds []string) (bool, *model.AppError) {
+	result := <-a.Srv.Store.Channel().UserBelongsToChannels(userId, channelIds)
+	if result.Err != nil {
+		return false, result.Err
+	}
+	return result.Data.(bool), nil
+}
+
+func (a *App) GetViewUsersRestrictions(userId string) (*model.ViewUsersRestrictions, *model.AppError) {
+	if a.HasPermissionTo(userId, model.PERMISSION_VIEW_MEMBERS) {
+		return nil, nil
+	}
+
+	result := <-a.Srv.Store.Team().GetUserTeamIds(userId, true)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+	teamIds := result.Data.([]string)
+
+	teamIdsWithPermission := []string{}
+	teamIdsWithoutPermission := []string{}
+	for _, teamId := range teamIds {
+		if a.HasPermissionToTeam(userId, teamId, model.PERMISSION_VIEW_MEMBERS) {
+			teamIdsWithPermission = append(teamIdsWithPermission, teamId)
+		} else {
+			teamIdsWithoutPermission = append(teamIdsWithoutPermission, teamId)
+		}
+	}
+
+	if len(teamIdsWithoutPermission) == 0 {
+		return &model.ViewUsersRestrictions{Teams: teamIdsWithPermission}, nil
+	}
+
+	userChannelMembers := <-a.Srv.Store.Channel().GetAllChannelMembersForUser(userId, true, true)
+	if userChannelMembers.Err != nil {
+		return nil, userChannelMembers.Err
+	}
+
+	channelIds := []string{}
+	for channelId := range userChannelMembers.Data.(map[string]string) {
+		channelIds = append(channelIds, channelId)
+	}
+
+	return &model.ViewUsersRestrictions{Teams: teamIdsWithPermission, Channels: channelIds}, nil
+}
+
+func (a *App) GetViewUsersRestrictionsForTeam(userId string, teamId string) ([]string, *model.AppError) {
+	if a.HasPermissionTo(userId, model.PERMISSION_VIEW_MEMBERS) {
+		return nil, nil
+	}
+
+	if a.HasPermissionToTeam(userId, teamId, model.PERMISSION_VIEW_MEMBERS) {
+		return nil, nil
+	}
+
+	result := <-a.Srv.Store.Channel().GetMembersForUser(teamId, userId)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+
+	channelIds := []string{}
+	for _, membership := range *result.Data.(*model.ChannelMembers) {
+		channelIds = append(channelIds, membership.ChannelId)
+	}
+
+	return channelIds, nil
+}
+
+func (a *App) getListOfAllowedChannelsForTeam(teamId string, viewRestrictions *model.ViewUsersRestrictions) ([]string, *model.AppError) {
+	var listOfAllowedChannels []string
+	if viewRestrictions == nil || strings.Contains(strings.Join(viewRestrictions.Teams, "."), teamId) {
+		result := <-a.Srv.Store.Channel().GetTeamChannels(teamId)
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		channelIds := []string{}
+		for _, channel := range *result.Data.(*model.ChannelList) {
+			channelIds = append(channelIds, channel.Id)
+		}
+
+		return channelIds, nil
+	}
+
+	cresult := <-a.Srv.Store.Channel().GetChannelsByIds(viewRestrictions.Channels)
+	if cresult.Err != nil {
+		return nil, cresult.Err
+	}
+	for _, c := range cresult.Data.([]*model.Channel) {
+		if c.TeamId == teamId {
+			listOfAllowedChannels = append(listOfAllowedChannels, c.Id)
+		}
+	}
+
+	return listOfAllowedChannels, nil
 }

@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/uni-x/mattermost-server/app"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/utils/fileutils"
 )
 
 func (api *API) InitOAuth() {
@@ -481,7 +481,7 @@ func completeOAuth(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	uri := c.GetSiteURLHeader() + "/signup/" + service + "/complete"
 
-	body, teamId, props, groups, err := c.App.AuthorizeOAuthUser(w, r, service, code, state, uri)
+	body, teamId, props, err := c.App.AuthorizeOAuthUser(w, r, service, code, state, uri)
 
 	action := ""
 	if props != nil {
@@ -499,7 +499,7 @@ func completeOAuth(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := c.App.CompleteOAuth(service, body, teamId, props, groups)
+	user, err := c.App.CompleteOAuth(service, body, teamId, props)
 	if err != nil {
 		err.Translate(c.App.T)
 		mlog.Error(err.Error())

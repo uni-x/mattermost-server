@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 func (a *App) ProcessSlackText(text string) string {
@@ -66,7 +66,7 @@ func replaceUserIds(userStore store.UserStore, text string) string {
 			userIds = append(userIds, match[1])
 		}
 
-		if res := <-userStore.GetProfileByIds(userIds, true); res.Err == nil {
+		if res := <-userStore.GetProfileByIds(userIds, true, nil); res.Err == nil {
 			for _, user := range res.Data.([]*model.User) {
 				text = strings.Replace(text, "<@"+user.Id+">", "@"+user.Username, -1)
 			}

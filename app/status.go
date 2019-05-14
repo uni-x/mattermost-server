@@ -6,10 +6,10 @@ package app
 import (
 	"fmt"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 var statusCache *utils.Cache = utils.NewLru(model.STATUS_CACHE_SIZE)

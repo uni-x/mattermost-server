@@ -4,7 +4,7 @@
 package einterfaces
 
 import (
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 type ClusterMessageHandler func(msg *model.ClusterMessage)

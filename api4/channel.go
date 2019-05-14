@@ -5,16 +5,15 @@ package api4
 
 import (
 	"net/http"
-	"strings"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 func (api *API) InitChannel() {
 	api.BaseRoutes.Channels.Handle("", api.ApiSessionRequired(getAllChannels)).Methods("GET")
 	api.BaseRoutes.Channels.Handle("", api.ApiSessionRequired(createChannel)).Methods("POST")
-	api.BaseRoutes.Channels.Handle("/create-from-azure-app", api.ApiTokenRequired(createChannelFromAzureApp)).Methods("POST")
 	api.BaseRoutes.Channels.Handle("/direct", api.ApiSessionRequired(createDirectChannel)).Methods("POST")
 	api.BaseRoutes.Channels.Handle("/search", api.ApiSessionRequired(searchAllChannels)).Methods("POST")
 	api.BaseRoutes.Channels.Handle("/group", api.ApiSessionRequired(createGroupChannel)).Methods("POST")
@@ -38,8 +37,6 @@ func (api *API) InitChannel() {
 	api.BaseRoutes.Channel.Handle("/stats", api.ApiSessionRequired(getChannelStats)).Methods("GET")
 	api.BaseRoutes.Channel.Handle("/pinned", api.ApiSessionRequired(getPinnedPosts)).Methods("GET")
 	api.BaseRoutes.Channel.Handle("/timezones", api.ApiSessionRequired(getChannelMembersTimezones)).Methods("GET")
-	api.BaseRoutes.Channel.Handle("/check-creds", api.ApiHandler(checkChannelCreds)).Methods("POST")
-	api.BaseRoutes.Channel.Handle("/update-creds", api.ApiTokenRequired(updateChannelCreds)).Methods("POST")
 	api.BaseRoutes.ChannelForUser.Handle("/unread", api.ApiSessionRequired(getChannelUnread)).Methods("GET")
 
 	api.BaseRoutes.ChannelByName.Handle("", api.ApiSessionRequired(getChannelByName)).Methods("GET")
@@ -162,6 +159,10 @@ func updateChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	if len(channel.Type) > 0 {
 		oldChannel.Type = channel.Type
+	}
+
+	if channel.GroupConstrained != nil {
+		oldChannel.GroupConstrained = channel.GroupConstrained
 	}
 
 	if _, err := c.App.UpdateChannel(oldChannel); err != nil {
@@ -295,21 +296,14 @@ func restoreChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.Err = err
 		return
 	}
+	teamId := channel.TeamId
 
-	userId := c.App.Session.UserId
-	user, err := c.App.GetUser(userId)
-	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, *user.AuthData, strings.Fields(user.AzureGroups), "owner")
-	if err != nil {
-		c.Err = model.NewAppError("Api4.RestoreChannel", "api.channel.restore_channel.error", nil, err.Error(), http.StatusBadRequest)
+	if !c.App.SessionHasPermissionToTeam(c.App.Session, teamId, model.PERMISSION_MANAGE_TEAM) {
+		c.SetPermissionError(model.PERMISSION_MANAGE_TEAM)
 		return
 	}
 
-	if !granted {
-		c.Err = model.NewAppError("Api4.RestoreChannel", "api.channel.restore_channel.error", nil, "access denied", http.StatusBadRequest)
-		return
-	}
-
-	channel, err = c.App.RestoreChannel(channel, userId)
+	channel, err = c.App.RestoreChannel(channel)
 	if err != nil {
 		c.Err = err
 		return
@@ -410,7 +404,7 @@ func getChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if channel.Type == model.CHANNEL_OPEN {
-		if !c.App.SessionHasPermissionToTeam(c.App.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) {
+		if !c.App.SessionHasPermissionToTeam(c.App.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) && !c.App.SessionHasPermissionToChannel(c.App.Session, c.Params.ChannelId, model.PERMISSION_READ_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_PUBLIC_CHANNEL)
 			return
 		}
@@ -758,24 +752,21 @@ func deleteChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if channel.Type == model.CHANNEL_DIRECT {
+	if channel.Type == model.CHANNEL_DIRECT || channel.Type == model.CHANNEL_GROUP {
 		c.Err = model.NewAppError("deleteChannel", "api.channel.delete_channel.type.invalid", nil, "", http.StatusBadRequest)
 		return
 	}
-/*
-	userId := c.App.Session.UserId
-	user, err := c.App.GetUser(userId)
-	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, *user.AuthData, strings.Fields(user.AzureGroups), "owner")
-	if err != nil {
-		c.Err = model.NewAppError("Api4.DeleteChannel", "api.channel.delete_channel.error", nil, err.Error(), http.StatusBadRequest)
+
+	if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_DELETE_PUBLIC_CHANNEL) {
+		c.SetPermissionError(model.PERMISSION_DELETE_PUBLIC_CHANNEL)
 		return
 	}
 
-	if !granted {
-		c.Err = model.NewAppError("Api4.DeleteChannel", "api.channel.delete_channel.error", nil, "access denied", http.StatusBadRequest)
+	if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_DELETE_PRIVATE_CHANNEL) {
+		c.SetPermissionError(model.PERMISSION_DELETE_PRIVATE_CHANNEL)
 		return
 	}
-*/
+
 	err = c.App.DeleteChannel(channel, c.App.Session.UserId)
 	if err != nil {
 		c.Err = err
@@ -802,7 +793,7 @@ func getChannelByName(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if channel.Type == model.CHANNEL_OPEN {
-		if !c.App.SessionHasPermissionToTeam(c.App.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) {
+		if !c.App.SessionHasPermissionToTeam(c.App.Session, channel.TeamId, model.PERMISSION_READ_PUBLIC_CHANNEL) && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_READ_CHANNEL) {
 			c.SetPermissionError(model.PERMISSION_READ_PUBLIC_CHANNEL)
 			return
 		}
@@ -989,7 +980,7 @@ func viewChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	times, err := c.App.ViewChannel(view, c.Params.UserId, !c.App.Session.IsMobileApp())
+	times, err := c.App.ViewChannel(view, c.Params.UserId, c.App.Session.Id)
 	if err != nil {
 		c.Err = err
 		return
@@ -1050,7 +1041,7 @@ func updateChannelMemberSchemeRoles(c *Context, w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if _, err := c.App.UpdateChannelMemberSchemeRoles(c.Params.ChannelId, c.Params.UserId, schemeRoles.SchemeUser, schemeRoles.SchemeAdmin); err != nil {
+	if _, err := c.App.UpdateChannelMemberSchemeRoles(c.Params.ChannelId, c.Params.UserId, schemeRoles.SchemeGuest, schemeRoles.SchemeUser, schemeRoles.SchemeAdmin); err != nil {
 		c.Err = err
 		return
 	}
@@ -1126,14 +1117,32 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check join permission if adding yourself, otherwise check manage permission
-	/*if channel.Type == model.CHANNEL_OPEN {
-		if member.UserId == c.App.Session.UserId {
-			if !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_JOIN_PUBLIC_CHANNELS) {
+	if channel.Type == model.CHANNEL_DIRECT || channel.Type == model.CHANNEL_GROUP {
+		c.Err = model.NewAppError("addUserToChannel", "api.channel.add_user_to_channel.type.app_error", nil, "", http.StatusBadRequest)
+		return
+	}
+
+	isNewMembership := false
+	if _, err = c.App.GetChannelMember(member.ChannelId, member.UserId); err != nil {
+		if err.Id == store.MISSING_CHANNEL_MEMBER_ERROR {
+			isNewMembership = true
+		} else {
+			c.Err = err
+			return
+		}
+	}
+
+	isSelfAdd := member.UserId == c.App.Session.UserId
+
+	if channel.Type == model.CHANNEL_OPEN {
+		if isSelfAdd && isNewMembership {
+			if !c.App.SessionHasPermissionToTeam(c.App.Session, channel.TeamId, model.PERMISSION_JOIN_PUBLIC_CHANNELS) {
 				c.SetPermissionError(model.PERMISSION_JOIN_PUBLIC_CHANNELS)
 				return
 			}
-		} else {
+		} else if isSelfAdd && !isNewMembership {
+			// nothing to do, since already in the channel
+		} else if !isSelfAdd {
 			if !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
 				c.SetPermissionError(model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS)
 				return
@@ -1141,35 +1150,39 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
-		c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS)
-		return
-	}
-
-	if channel.Type == model.CHANNEL_DIRECT || channel.Type == model.CHANNEL_GROUP {
-		c.Err = model.NewAppError("addUserToChannel", "api.channel.add_user_to_channel.type.app_error", nil, "", http.StatusBadRequest)
-		return
-	}*/
-
-	sessionUserId := c.App.Session.UserId
-	if c.Params.UserId != sessionUserId {
-		user, err := c.App.GetUser(sessionUserId)
-		if err != nil {
-			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, err.Error(), http.StatusBadRequest)
-			return
-		}
-		granted, err := c.App.CheckChannelCreds(channel.Id, *user.AuthData, strings.Fields(user.AzureGroups), "owner")
-		if err != nil {
-			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if !granted {
-			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, "access denied", http.StatusBadRequest)
-			return
+	if channel.Type == model.CHANNEL_PRIVATE {
+		if isSelfAdd && isNewMembership {
+			if !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
+				c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS)
+				return
+			}
+		} else if isSelfAdd && !isNewMembership {
+			// nothing to do, since already in the channel
+		} else if !isSelfAdd {
+			if !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
+				c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS)
+				return
+			}
 		}
 	}
 
-	cm, err := c.App.AddChannelMember(member.UserId, channel, sessionUserId, postRootId, !c.App.Session.IsMobileApp())
+	if channel.GroupConstrained != nil && *channel.GroupConstrained {
+		nonMembers, err := c.App.FilterNonGroupChannelMembers([]string{member.UserId}, channel)
+		if err != nil {
+			if v, ok := err.(*model.AppError); ok {
+				c.Err = v
+			} else {
+				c.Err = model.NewAppError("addChannelMember", "api.channel.add_members.error", nil, err.Error(), http.StatusBadRequest)
+			}
+			return
+		}
+		if len(nonMembers) > 0 {
+			c.Err = model.NewAppError("addChannelMember", "api.channel.add_members.user_denied", map[string]interface{}{"UserIDs": nonMembers}, "", http.StatusBadRequest)
+			return
+		}
+	}
+
+	cm, err := c.App.AddChannelMember(member.UserId, channel, c.App.Session.UserId, postRootId)
 	if err != nil {
 		c.Err = err
 		return
@@ -1191,42 +1204,30 @@ func removeChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		c.Err = err
 		return
 	}
-	/*
-			if !(channel.Type == model.CHANNEL_OPEN || channel.Type == model.CHANNEL_PRIVATE) {
-				c.Err = model.NewAppError("removeChannelMember", "api.channel.remove_channel_member.type.app_error", nil, "", http.StatusBadRequest)
-				return
-			}
-		if c.Params.UserId != c.App.Session.UserId {
-			if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
-				c.SetPermissionError(model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS)
-				return
-			}
 
-			if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
-				c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS)
-				return
-			}
-		}
-	*/
-	userId := c.App.Session.UserId
-	if c.Params.UserId != userId {
-		user, err := c.App.GetUser(userId)
-		if err != nil {
-			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, err.Error(), http.StatusBadRequest)
+	if !(channel.Type == model.CHANNEL_OPEN || channel.Type == model.CHANNEL_PRIVATE) {
+		c.Err = model.NewAppError("removeChannelMember", "api.channel.remove_channel_member.type.app_error", nil, "", http.StatusBadRequest)
+		return
+	}
+
+	if channel.GroupConstrained != nil && *channel.GroupConstrained && (c.Params.UserId != c.App.Session.UserId) {
+		c.Err = model.NewAppError("removeChannelMember", "api.channel.remove_member.group_constrained.app_error", nil, "", http.StatusBadRequest)
+		return
+	}
+
+	if c.Params.UserId != c.App.Session.UserId {
+		if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
+			c.SetPermissionError(model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS)
 			return
 		}
-		granted, err := c.App.CheckChannelCreds(channel.Id, *user.AuthData, strings.Fields(user.AzureGroups), "owner")
-		if err != nil {
-			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if !granted {
-			c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.remove_from_channel.error", nil, "access denied", http.StatusBadRequest)
+
+		if channel.Type == model.CHANNEL_PRIVATE && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS) {
+			c.SetPermissionError(model.PERMISSION_MANAGE_PRIVATE_CHANNEL_MEMBERS)
 			return
 		}
 	}
 
-	if err = c.App.RemoveUserFromChannel(c.Params.UserId, userId, channel); err != nil {
+	if err = c.App.RemoveUserFromChannel(c.Params.UserId, c.App.Session.UserId, channel); err != nil {
 		c.Err = err
 		return
 	}
@@ -1280,62 +1281,6 @@ func updateChannelScheme(c *Context, w http.ResponseWriter, r *http.Request) {
 	_, err = c.App.UpdateChannelScheme(channel)
 	if err != nil {
 		c.Err = err
-		return
-	}
-
-	ReturnStatusOK(w)
-}
-
-func createChannelFromAzureApp(c *Context, w http.ResponseWriter, r *http.Request) {
-	createChannelData := model.ChannelCreateDataFromJson(r.Body)
-	if createChannelData == nil {
-		c.Err = model.NewAppError("Api4.CreateChannelFromAzureApp", "api.channel.create_channel_from_azure_app.error", nil, "Invalid channel data", http.StatusBadRequest)
-		return
-	}
-	channel, err := c.App.CreateChannelFromAzureApp(createChannelData.DisplayName, createChannelData.CreatorId, createChannelData.Credentials)
-	if err != nil {
-		c.Err = model.NewAppError("Api4.CreateChannelFromAzureApp", "api.channel.create_channel_from_azure_app.error", nil, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Write([]byte("{\"channelId\":\"" + channel.Id + "\"}"))
-}
-
-func checkChannelCreds(c *Context, w http.ResponseWriter, r *http.Request) {
-	c.RequireChannelId()
-	if c.Err != nil {
-		return
-	}
-
-	credsRequest := model.ChannelCredsRequestFromJson(r.Body)
-	if credsRequest.ChannelRole == "" || (credsRequest.UserId == "" && len(credsRequest.AzureGroups) == 0) {
-		c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.check_channel_creds.error", nil, "Some request fields are empty", http.StatusBadRequest)
-		return
-	}
-	granted, err := c.App.CheckChannelCreds(c.Params.ChannelId, credsRequest.UserId, credsRequest.AzureGroups, credsRequest.ChannelRole)
-	if err != nil {
-		c.Err = model.NewAppError("Api4.CheckChannelCreds", "api.channel.check_channel_creds.error", nil, err.Error(), http.StatusBadRequest)
-		return
-	}
-	var output string
-	if granted {
-		output = "true"
-	} else {
-		output = "false"
-	}
-	w.Write([]byte(output))
-}
-
-func updateChannelCreds(c *Context, w http.ResponseWriter, r *http.Request) {
-	c.RequireChannelId()
-	if c.Err != nil {
-		return
-	}
-
-	creds := model.ChannelCredsFromJson(r.Body)
-	err := c.App.UpdateChannelCreds(c.Params.ChannelId, creds)
-	if err != nil {
-		c.Err = model.NewAppError("Api4.UpdateChannelCreds", "api.channel.update_channel_creds.error", nil, err.Error(), http.StatusBadRequest)
 		return
 	}
 

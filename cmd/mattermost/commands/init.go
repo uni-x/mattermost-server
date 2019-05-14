@@ -4,17 +4,15 @@
 package commands
 
 import (
-	"github.com/uni-x/mattermost-server/app"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/viper"
 	"github.com/spf13/cobra"
 )
 
 func InitDBCommandContextCobra(command *cobra.Command) (*app.App, error) {
-	config, err := command.Flags().GetString("config")
-	if err != nil {
-		return nil, err
-	}
+	config := viper.GetString("config")
 
 	a, err := InitDBCommandContext(config)
 
@@ -24,19 +22,21 @@ func InitDBCommandContextCobra(command *cobra.Command) (*app.App, error) {
 	}
 
 	a.InitPlugins(*a.Config().PluginSettings.Directory, *a.Config().PluginSettings.ClientDirectory)
-	a.DoAdvancedPermissionsMigration()
-	a.DoEmojisPermissionsMigration()
+	a.DoAppMigrations()
 
 	return a, nil
 }
 
-func InitDBCommandContext(configFileLocation string) (*app.App, error) {
+func InitDBCommandContext(configDSN string) (*app.App, error) {
 	if err := utils.TranslationsPreInit(); err != nil {
 		return nil, err
 	}
 	model.AppErrorInit(utils.T)
 
-	s, err := app.NewServer(app.ConfigFile(configFileLocation))
+	s, err := app.NewServer(
+		app.Config(configDSN, false),
+		app.StartElasticsearch,
+	)
 	if err != nil {
 		return nil, err
 	}

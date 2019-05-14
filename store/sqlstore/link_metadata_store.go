@@ -7,8 +7,8 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 type SqlLinkMetadataStore struct {
@@ -45,7 +45,7 @@ func (s SqlLinkMetadataStore) Save(metadata *model.LinkMetadata) store.StoreChan
 		metadata.PreSave()
 
 		err := s.GetMaster().Insert(metadata)
-		if err != nil {
+		if err != nil && !IsUniqueConstraintError(err, []string{"PRIMARY", "linkmetadata_pkey"}) {
 			result.Err = model.NewAppError("SqlLinkMetadataStore.Save", "store.sql_link_metadata.save.app_error", nil, "url="+metadata.URL+", "+err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -4,6 +4,7 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,13 +12,246 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils/fileutils"
 )
 
 func TestImportImportScheme(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
+	defer th.TearDown()
+
+	// Mark the phase 2 permissions migration as completed.
+	<-th.App.Srv.Store.System().Save(&model.System{Name: model.MIGRATION_KEY_ADVANCED_PERMISSIONS_PHASE_2, Value: "true"})
+
+	defer func() {
+		<-th.App.Srv.Store.System().PermanentDeleteByName(model.MIGRATION_KEY_ADVANCED_PERMISSIONS_PHASE_2)
+	}()
+
+	// Try importing an invalid scheme in dryRun mode.
+	data := SchemeImportData{
+		Name:  ptrStr(model.NewId()),
+		Scope: ptrStr("team"),
+		DefaultTeamGuestRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
+		DefaultTeamUserRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
+		DefaultTeamAdminRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
+		DefaultChannelGuestRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
+		DefaultChannelUserRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
+		DefaultChannelAdminRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
+		Description: ptrStr("description"),
+	}
+
+	if err := th.App.ImportScheme(&data, true); err == nil {
+		t.Fatalf("Should have failed to import.")
+	}
+
+	if res := <-th.App.Srv.Store.Scheme().GetByName(*data.Name); res.Err == nil {
+		t.Fatalf("Scheme should not have imported.")
+	}
+
+	// Try importing a valid scheme in dryRun mode.
+	data.DisplayName = ptrStr("display name")
+
+	if err := th.App.ImportScheme(&data, true); err != nil {
+		t.Fatalf("Should have succeeded.")
+	}
+
+	if res := <-th.App.Srv.Store.Scheme().GetByName(*data.Name); res.Err == nil {
+		t.Fatalf("Scheme should not have imported.")
+	}
+
+	// Try importing an invalid scheme.
+	data.DisplayName = nil
+
+	if err := th.App.ImportScheme(&data, false); err == nil {
+		t.Fatalf("Should have failed to import.")
+	}
+
+	if res := <-th.App.Srv.Store.Scheme().GetByName(*data.Name); res.Err == nil {
+		t.Fatalf("Scheme should not have imported.")
+	}
+
+	// Try importing a valid scheme with all params set.
+	data.DisplayName = ptrStr("display name")
+
+	if err := th.App.ImportScheme(&data, false); err != nil {
+		t.Fatalf("Should have succeeded.")
+	}
+
+	if res := <-th.App.Srv.Store.Scheme().GetByName(*data.Name); res.Err != nil {
+		t.Fatalf("Failed to import scheme: %v", res.Err)
+	} else {
+		scheme := res.Data.(*model.Scheme)
+		assert.Equal(t, *data.Name, scheme.Name)
+		assert.Equal(t, *data.DisplayName, scheme.DisplayName)
+		assert.Equal(t, *data.Description, scheme.Description)
+		assert.Equal(t, *data.Scope, scheme.Scope)
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamAdminRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamAdminRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamUserRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamUserRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamGuestRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelAdminRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelAdminRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelUserRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelUserRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelGuestRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+	}
+
+	// Try modifying all the fields and re-importing.
+	data.DisplayName = ptrStr("new display name")
+	data.Description = ptrStr("new description")
+
+	if err := th.App.ImportScheme(&data, false); err != nil {
+		t.Fatalf("Should have succeeded: %v", err)
+	}
+
+	if res := <-th.App.Srv.Store.Scheme().GetByName(*data.Name); res.Err != nil {
+		t.Fatalf("Failed to import scheme: %v", res.Err)
+	} else {
+		scheme := res.Data.(*model.Scheme)
+		assert.Equal(t, *data.Name, scheme.Name)
+		assert.Equal(t, *data.DisplayName, scheme.DisplayName)
+		assert.Equal(t, *data.Description, scheme.Description)
+		assert.Equal(t, *data.Scope, scheme.Scope)
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamAdminRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamAdminRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamUserRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamUserRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamGuestRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelAdminRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelAdminRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelUserRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelUserRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelGuestRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+	}
+
+	// Try changing the scope of the scheme and reimporting.
+	data.Scope = ptrStr("channel")
+
+	if err := th.App.ImportScheme(&data, false); err == nil {
+		t.Fatalf("Should have failed to import.")
+	}
+
+	if res := <-th.App.Srv.Store.Scheme().GetByName(*data.Name); res.Err != nil {
+		t.Fatalf("Failed to import scheme: %v", res.Err)
+	} else {
+		scheme := res.Data.(*model.Scheme)
+		assert.Equal(t, *data.Name, scheme.Name)
+		assert.Equal(t, *data.DisplayName, scheme.DisplayName)
+		assert.Equal(t, *data.Description, scheme.Description)
+		assert.Equal(t, "team", scheme.Scope)
+	}
+}
+
+func TestImportImportSchemeWithoutGuestRoles(t *testing.T) {
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Mark the phase 2 permissions migration as completed.
@@ -114,6 +348,15 @@ func TestImportImportScheme(t *testing.T) {
 			assert.True(t, role.SchemeManaged)
 		}
 
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamGuestRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
 		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelAdminRole); res.Err != nil {
 			t.Fatalf("Should have found the imported role.")
 		} else {
@@ -128,6 +371,15 @@ func TestImportImportScheme(t *testing.T) {
 		} else {
 			role := res.Data.(*model.Role)
 			assert.Equal(t, *data.DefaultChannelUserRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelGuestRole.DisplayName, role.DisplayName)
 			assert.False(t, role.BuiltIn)
 			assert.True(t, role.SchemeManaged)
 		}
@@ -168,6 +420,15 @@ func TestImportImportScheme(t *testing.T) {
 			assert.True(t, role.SchemeManaged)
 		}
 
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultTeamGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultTeamGuestRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
 		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelAdminRole); res.Err != nil {
 			t.Fatalf("Should have found the imported role.")
 		} else {
@@ -182,6 +443,15 @@ func TestImportImportScheme(t *testing.T) {
 		} else {
 			role := res.Data.(*model.Role)
 			assert.Equal(t, *data.DefaultChannelUserRole.DisplayName, role.DisplayName)
+			assert.False(t, role.BuiltIn)
+			assert.True(t, role.SchemeManaged)
+		}
+
+		if res := <-th.App.Srv.Store.Role().GetByName(scheme.DefaultChannelGuestRole); res.Err != nil {
+			t.Fatalf("Should have found the imported role.")
+		} else {
+			role := res.Data.(*model.Role)
+			assert.Equal(t, *data.DefaultChannelGuestRole.DisplayName, role.DisplayName)
 			assert.False(t, role.BuiltIn)
 			assert.True(t, role.SchemeManaged)
 		}
@@ -206,7 +476,7 @@ func TestImportImportScheme(t *testing.T) {
 }
 
 func TestImportImportRole(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Try importing an invalid role in dryRun mode.
@@ -311,7 +581,7 @@ func TestImportImportRole(t *testing.T) {
 }
 
 func TestImportImportTeam(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Mark the phase 2 permissions migration as completed.
@@ -412,7 +682,7 @@ func TestImportImportTeam(t *testing.T) {
 }
 
 func TestImportImportChannel(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Mark the phase 2 permissions migration as completed.
@@ -548,12 +818,15 @@ func TestImportImportChannel(t *testing.T) {
 }
 
 func TestImportImportUser(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Check how many users are in the database.
 	var userCount int64
-	if r := <-th.App.Srv.Store.User().GetTotalUsersCount(); r.Err == nil {
+	if r := <-th.App.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeDeleted:     true,
+		IncludeBotAccounts: false,
+	}); r.Err == nil {
 		userCount = r.Data.(int64)
 	} else {
 		t.Fatalf("Failed to get user count.")
@@ -568,7 +841,10 @@ func TestImportImportUser(t *testing.T) {
 	}
 
 	// Check that no more users are in the DB.
-	if r := <-th.App.Srv.Store.User().GetTotalUsersCount(); r.Err == nil {
+	if r := <-th.App.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeDeleted:     true,
+		IncludeBotAccounts: false,
+	}); r.Err == nil {
 		if r.Data.(int64) != userCount {
 			t.Fatalf("Unexpected number of users")
 		}
@@ -586,7 +862,10 @@ func TestImportImportUser(t *testing.T) {
 	}
 
 	// Check that no more users are in the DB.
-	if r := <-th.App.Srv.Store.User().GetTotalUsersCount(); r.Err == nil {
+	if r := <-th.App.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeDeleted:     true,
+		IncludeBotAccounts: false,
+	}); r.Err == nil {
 		if r.Data.(int64) != userCount {
 			t.Fatalf("Unexpected number of users")
 		}
@@ -603,7 +882,10 @@ func TestImportImportUser(t *testing.T) {
 	}
 
 	// Check that no more users are in the DB.
-	if r := <-th.App.Srv.Store.User().GetTotalUsersCount(); r.Err == nil {
+	if r := <-th.App.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeDeleted:     true,
+		IncludeBotAccounts: false,
+	}); r.Err == nil {
 		if r.Data.(int64) != userCount {
 			t.Fatalf("Unexpected number of users")
 		}
@@ -628,7 +910,10 @@ func TestImportImportUser(t *testing.T) {
 	}
 
 	// Check that one more user is in the DB.
-	if r := <-th.App.Srv.Store.User().GetTotalUsersCount(); r.Err == nil {
+	if r := <-th.App.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeDeleted:     true,
+		IncludeBotAccounts: false,
+	}); r.Err == nil {
 		if r.Data.(int64) != userCount+1 {
 			t.Fatalf("Unexpected number of users")
 		}
@@ -685,7 +970,10 @@ func TestImportImportUser(t *testing.T) {
 	}
 
 	// Check user count the same.
-	if r := <-th.App.Srv.Store.User().GetTotalUsersCount(); r.Err == nil {
+	if r := <-th.App.Srv.Store.User().Count(model.UserCountOptions{
+		IncludeDeleted:     true,
+		IncludeBotAccounts: false,
+	}); r.Err == nil {
 		if r.Data.(int64) != userCount+1 {
 			t.Fatalf("Unexpected number of users")
 		}
@@ -783,7 +1071,7 @@ func TestImportImportUser(t *testing.T) {
 		Position:  ptrStr(model.NewId()),
 	}
 
-	teamMembers, err := th.App.GetTeamMembers(team.Id, 0, 1000)
+	teamMembers, err := th.App.GetTeamMembers(team.Id, 0, 1000, nil)
 	if err != nil {
 		t.Fatalf("Failed to get team member count")
 	}
@@ -865,7 +1153,7 @@ func TestImportImportUser(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Check no new member objects were created because dry run mode.
-	tmc, err := th.App.GetTeamMembers(team.Id, 0, 1000)
+	tmc, err := th.App.GetTeamMembers(team.Id, 0, 1000, nil)
 	require.Nil(t, err, "Failed to get Team Member Count")
 	require.Len(t, tmc, teamMemberCount, "Number of team members not as expected")
 
@@ -916,7 +1204,7 @@ func TestImportImportUser(t *testing.T) {
 	assert.NotNil(t, err)
 
 	// Check no new member objects were created because all tests should have failed so far.
-	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000)
+	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000, nil)
 	require.Nil(t, err, "Failed to get Team Member Count")
 	require.Len(t, tmc, teamMemberCount)
 
@@ -939,7 +1227,7 @@ func TestImportImportUser(t *testing.T) {
 	assert.NotNil(t, err)
 
 	// Check only new team member object created because dry run mode.
-	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000)
+	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000, nil)
 	require.Nil(t, err, "Failed to get Team Member Count")
 	require.Len(t, tmc, teamMemberCount+1)
 
@@ -972,7 +1260,7 @@ func TestImportImportUser(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Check only new channel member object created because dry run mode.
-	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000)
+	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000, nil)
 	require.Nil(t, err, "Failed to get Team Member Count")
 	require.Len(t, tmc, teamMemberCount+1, "Number of team members not as expected")
 
@@ -1027,7 +1315,7 @@ func TestImportImportUser(t *testing.T) {
 	checkPreference(t, th.App, user.Id, model.PREFERENCE_CATEGORY_THEME, team.Id, *(*data.Teams)[0].Theme)
 
 	// No more new member objects.
-	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000)
+	tmc, err = th.App.GetTeamMembers(team.Id, 0, 1000, nil)
 	require.Nil(t, err, "Failed to get Team Member Count")
 	require.Len(t, tmc, teamMemberCount+1, "Number of team members not as expected")
 
@@ -1095,7 +1383,34 @@ func TestImportImportUser(t *testing.T) {
 	checkPreference(t, th.App, user.Id, model.PREFERENCE_CATEGORY_TUTORIAL_STEPS, user.Id, *data.TutorialStep)
 	checkPreference(t, th.App, user.Id, model.PREFERENCE_CATEGORY_NOTIFICATIONS, model.PREFERENCE_NAME_EMAIL_INTERVAL, "3600")
 
-	// Set Notify Props
+	// Set Notify Without mention keys
+	data.NotifyProps = &UserNotifyPropsImportData{
+		Desktop:          ptrStr(model.USER_NOTIFY_ALL),
+		DesktopSound:     ptrStr("true"),
+		Email:            ptrStr("true"),
+		Mobile:           ptrStr(model.USER_NOTIFY_ALL),
+		MobilePushStatus: ptrStr(model.STATUS_ONLINE),
+		ChannelTrigger:   ptrStr("true"),
+		CommentsTrigger:  ptrStr(model.COMMENTS_NOTIFY_ROOT),
+	}
+	err = th.App.ImportUser(&data, false)
+	assert.Nil(t, err)
+
+	user, err = th.App.GetUserByUsername(username)
+	if err != nil {
+		t.Fatalf("Failed to get user from database.")
+	}
+
+	checkNotifyProp(t, user, model.DESKTOP_NOTIFY_PROP, model.USER_NOTIFY_ALL)
+	checkNotifyProp(t, user, model.DESKTOP_SOUND_NOTIFY_PROP, "true")
+	checkNotifyProp(t, user, model.EMAIL_NOTIFY_PROP, "true")
+	checkNotifyProp(t, user, model.PUSH_NOTIFY_PROP, model.USER_NOTIFY_ALL)
+	checkNotifyProp(t, user, model.PUSH_STATUS_NOTIFY_PROP, model.STATUS_ONLINE)
+	checkNotifyProp(t, user, model.CHANNEL_MENTIONS_NOTIFY_PROP, "true")
+	checkNotifyProp(t, user, model.COMMENTS_NOTIFY_PROP, model.COMMENTS_NOTIFY_ROOT)
+	checkNotifyProp(t, user, model.MENTION_KEYS_NOTIFY_PROP, fmt.Sprintf("%s,@%s", username, username))
+
+	// Set Notify Props with Mention keys
 	data.NotifyProps = &UserNotifyPropsImportData{
 		Desktop:          ptrStr(model.USER_NOTIFY_ALL),
 		DesktopSound:     ptrStr("true"),
@@ -1123,7 +1438,7 @@ func TestImportImportUser(t *testing.T) {
 	checkNotifyProp(t, user, model.COMMENTS_NOTIFY_PROP, model.COMMENTS_NOTIFY_ROOT)
 	checkNotifyProp(t, user, model.MENTION_KEYS_NOTIFY_PROP, "valid,misc")
 
-	// Change Notify Props
+	// Change Notify Props with mention keys
 	data.NotifyProps = &UserNotifyPropsImportData{
 		Desktop:          ptrStr(model.USER_NOTIFY_MENTION),
 		DesktopSound:     ptrStr("false"),
@@ -1133,6 +1448,33 @@ func TestImportImportUser(t *testing.T) {
 		ChannelTrigger:   ptrStr("false"),
 		CommentsTrigger:  ptrStr(model.COMMENTS_NOTIFY_ANY),
 		MentionKeys:      ptrStr("misc"),
+	}
+	err = th.App.ImportUser(&data, false)
+	assert.Nil(t, err)
+
+	user, err = th.App.GetUserByUsername(username)
+	if err != nil {
+		t.Fatalf("Failed to get user from database.")
+	}
+
+	checkNotifyProp(t, user, model.DESKTOP_NOTIFY_PROP, model.USER_NOTIFY_MENTION)
+	checkNotifyProp(t, user, model.DESKTOP_SOUND_NOTIFY_PROP, "false")
+	checkNotifyProp(t, user, model.EMAIL_NOTIFY_PROP, "false")
+	checkNotifyProp(t, user, model.PUSH_NOTIFY_PROP, model.USER_NOTIFY_NONE)
+	checkNotifyProp(t, user, model.PUSH_STATUS_NOTIFY_PROP, model.STATUS_AWAY)
+	checkNotifyProp(t, user, model.CHANNEL_MENTIONS_NOTIFY_PROP, "false")
+	checkNotifyProp(t, user, model.COMMENTS_NOTIFY_PROP, model.COMMENTS_NOTIFY_ANY)
+	checkNotifyProp(t, user, model.MENTION_KEYS_NOTIFY_PROP, "misc")
+
+	// Change Notify Props without mention keys
+	data.NotifyProps = &UserNotifyPropsImportData{
+		Desktop:          ptrStr(model.USER_NOTIFY_MENTION),
+		DesktopSound:     ptrStr("false"),
+		Email:            ptrStr("false"),
+		Mobile:           ptrStr(model.USER_NOTIFY_NONE),
+		MobilePushStatus: ptrStr(model.STATUS_AWAY),
+		ChannelTrigger:   ptrStr("false"),
+		CommentsTrigger:  ptrStr(model.COMMENTS_NOTIFY_ANY),
 	}
 	err = th.App.ImportUser(&data, false)
 	assert.Nil(t, err)
@@ -1200,11 +1542,19 @@ func TestImportImportUser(t *testing.T) {
 		Name:        ptrStr(model.NewId()),
 		DisplayName: ptrStr(model.NewId()),
 		Scope:       ptrStr("team"),
+		DefaultTeamGuestRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
 		DefaultTeamUserRole: &RoleImportData{
 			Name:        ptrStr(model.NewId()),
 			DisplayName: ptrStr(model.NewId()),
 		},
 		DefaultTeamAdminRole: &RoleImportData{
+			Name:        ptrStr(model.NewId()),
+			DisplayName: ptrStr(model.NewId()),
+		},
+		DefaultChannelGuestRole: &RoleImportData{
 			Name:        ptrStr(model.NewId()),
 			DisplayName: ptrStr(model.NewId()),
 		},
@@ -1290,6 +1640,7 @@ func TestImportImportUser(t *testing.T) {
 	}
 	assert.True(t, teamMember.SchemeAdmin)
 	assert.True(t, teamMember.SchemeUser)
+	assert.False(t, teamMember.SchemeGuest)
 	assert.Equal(t, "", teamMember.ExplicitRoles)
 
 	channelMember, err = th.App.GetChannelMember(channel.Id, user.Id)
@@ -1298,12 +1649,108 @@ func TestImportImportUser(t *testing.T) {
 	}
 	assert.True(t, channelMember.SchemeAdmin)
 	assert.True(t, channelMember.SchemeUser)
+	assert.False(t, channelMember.SchemeGuest)
 	assert.Equal(t, "", channelMember.ExplicitRoles)
 
+	// Test importing deleted user with a valid team & valid channel name in apply mode.
+	username = model.NewId()
+	deleteAt := model.GetMillis()
+	deletedUserData := &UserImportData{
+		Username: &username,
+		DeleteAt: &deleteAt,
+		Email:    ptrStr(model.NewId() + "@example.com"),
+		Teams: &[]UserTeamImportData{
+			{
+				Name:  &team.Name,
+				Roles: ptrStr("team_user"),
+				Channels: &[]UserChannelImportData{
+					{
+						Name:  &channel.Name,
+						Roles: ptrStr("channel_user"),
+					},
+				},
+			},
+		},
+	}
+	err = th.App.ImportUser(deletedUserData, false)
+	assert.Nil(t, err)
+
+	user, err = th.App.GetUserByUsername(*deletedUserData.Username)
+	if err != nil {
+		t.Fatalf("Failed to get user from database.")
+	}
+
+	teamMember, err = th.App.GetTeamMember(team.Id, user.Id)
+	if err != nil {
+		t.Fatalf("Failed to get the team member")
+	}
+
+	assert.False(t, teamMember.SchemeAdmin)
+	assert.True(t, teamMember.SchemeUser)
+	assert.False(t, teamMember.SchemeGuest)
+	assert.Equal(t, "", teamMember.ExplicitRoles)
+
+	channelMember, err = th.App.GetChannelMember(channel.Id, user.Id)
+	if err != nil {
+		t.Fatalf("Failed to get the channel member")
+	}
+
+	assert.False(t, teamMember.SchemeAdmin)
+	assert.True(t, channelMember.SchemeUser)
+	assert.False(t, teamMember.SchemeGuest)
+	assert.Equal(t, "", channelMember.ExplicitRoles)
+
+	// Test importing deleted guest with a valid team & valid channel name in apply mode.
+	username = model.NewId()
+	deleteAt = model.GetMillis()
+	deletedGuestData := &UserImportData{
+		Username: &username,
+		DeleteAt: &deleteAt,
+		Email:    ptrStr(model.NewId() + "@example.com"),
+		Teams: &[]UserTeamImportData{
+			{
+				Name:  &team.Name,
+				Roles: ptrStr("team_guest"),
+				Channels: &[]UserChannelImportData{
+					{
+						Name:  &channel.Name,
+						Roles: ptrStr("channel_guest"),
+					},
+				},
+			},
+		},
+	}
+	err = th.App.ImportUser(deletedGuestData, false)
+	assert.Nil(t, err)
+
+	user, err = th.App.GetUserByUsername(*deletedGuestData.Username)
+	if err != nil {
+		t.Fatalf("Failed to get user from database.")
+	}
+
+	teamMember, err = th.App.GetTeamMember(team.Id, user.Id)
+	if err != nil {
+		t.Fatalf("Failed to get the team member")
+	}
+
+	assert.False(t, teamMember.SchemeAdmin)
+	assert.False(t, teamMember.SchemeUser)
+	assert.True(t, teamMember.SchemeGuest)
+	assert.Equal(t, "", teamMember.ExplicitRoles)
+
+	channelMember, err = th.App.GetChannelMember(channel.Id, user.Id)
+	if err != nil {
+		t.Fatalf("Failed to get the channel member")
+	}
+
+	assert.False(t, teamMember.SchemeAdmin)
+	assert.False(t, channelMember.SchemeUser)
+	assert.True(t, teamMember.SchemeGuest)
+	assert.Equal(t, "", channelMember.ExplicitRoles)
 }
 
 func TestImportUserDefaultNotifyProps(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Create a valid new user with some, but not all, notify props populated.
@@ -1326,7 +1773,7 @@ func TestImportUserDefaultNotifyProps(t *testing.T) {
 	assert.Equal(t, "false", val)
 
 	// Check all the other notify props are set to their default values.
-	comparisonUser := model.User{}
+	comparisonUser := model.User{Username: user.Username}
 	comparisonUser.SetDefaultNotifications()
 
 	for key, expectedValue := range comparisonUser.NotifyProps {
@@ -1341,7 +1788,7 @@ func TestImportUserDefaultNotifyProps(t *testing.T) {
 }
 
 func TestImportImportPost(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Create a Team.
@@ -1642,9 +2089,9 @@ func TestImportImportPost(t *testing.T) {
 			t.Fatal("Post properties not as expected")
 		}
 
-		if result := <-th.App.Srv.Store.Reaction().GetForPost(post.Id, false); result.Err != nil {
+		if reactions, err := th.App.Srv.Store.Reaction().GetForPost(post.Id, false); err != nil {
 			t.Fatal("Can't get reaction")
-		} else if len(result.Data.([]*model.Reaction)) != 1 {
+		} else if len(reactions) != 1 {
 			t.Fatal("Invalid number of reactions")
 		}
 	}
@@ -1757,7 +2204,7 @@ func TestImportImportPost(t *testing.T) {
 }
 
 func TestImportImportDirectChannel(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	// Check how many channels are in the database.
@@ -1933,7 +2380,7 @@ func TestImportImportDirectChannel(t *testing.T) {
 }
 
 func TestImportImportDirectPost(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	// Create the DIRECT channel.
@@ -2285,7 +2732,7 @@ func TestImportImportDirectPost(t *testing.T) {
 }
 
 func TestImportImportEmoji(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableCustomEmoji = true })
@@ -2324,7 +2771,7 @@ func TestImportImportEmoji(t *testing.T) {
 }
 
 func TestImportAttachment(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	testsDir, _ := fileutils.FindDir("tests")
@@ -2347,7 +2794,7 @@ func TestImportAttachment(t *testing.T) {
 
 func TestImportPostAndRepliesWithAttachments(t *testing.T) {
 
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	// Create a Team.
@@ -2486,7 +2933,7 @@ func TestImportPostAndRepliesWithAttachments(t *testing.T) {
 
 func TestImportDirectPostWithAttachments(t *testing.T) {
 
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	testsDir, _ := fileutils.FindDir("tests")

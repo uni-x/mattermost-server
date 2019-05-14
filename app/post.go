@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/plugin"
-	"github.com/uni-x/mattermost-server/store"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/plugin"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const (
@@ -22,39 +22,13 @@ const (
 	PENDING_POST_IDS_CACHE_TTL  = 30 * time.Second
 )
 
-func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*model.Post, *model.AppError) {
+func (a *App) CreatePostAsUser(post *model.Post, currentSessionId string) (*model.Post, *model.AppError) {
 	// Check that channel has not been deleted
-	result := <-a.Srv.Store.Channel().Get(post.ChannelId, true)
-	if result.Err != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
+	channel, errCh := a.Srv.Store.Channel().Get(post.ChannelId, true)
+	if errCh != nil {
+		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, errCh.Error(), http.StatusBadRequest)
 		return nil, err
 	}
-	channel := result.Data.(*model.Channel)
-
-	/*channelId := channel.Id
-	userId := a.Session.UserId
-	user, e := a.GetUser(userId)
-	if e != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
-		return nil, err
-	}
-	azureGroups := strings.Fields(user.AzureGroups)
-
-	var channelRole string
-	if post.RootId != "" || post.ParentId != "" {
-		channelRole = "replier"
-	} else {
-		channelRole = "member"
-	}
-	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, channelRole)
-	if e != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
-		return nil, err
-	}
-	if !granted {
-		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't create such posts in this channel", http.StatusBadRequest)
-		return nil, err
-	}*/
 
 	if strings.HasPrefix(post.Type, model.POST_SYSTEM_MESSAGE_PREFIX) {
 		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.type"}, "", http.StatusBadRequest)
@@ -75,11 +49,10 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 		}
 
 		if err.Id == "api.post.create_post.town_square_read_only" {
-			result := <-a.Srv.Store.User().Get(post.UserId)
-			if result.Err != nil {
-				return nil, result.Err
+			user, userErr := a.Srv.Store.User().Get(post.UserId)
+			if userErr != nil {
+				return nil, userErr
 			}
-			user := result.Data.(*model.User)
 
 			T := utils.GetUserTranslations(user.Locale)
 			a.SendEphemeralPost(
@@ -99,7 +72,7 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 
 	// Update the LastViewAt only if the post does not have from_webhook prop set (eg. Zapier app)
 	if _, ok := post.Props["from_webhook"]; !ok {
-		if _, err := a.MarkChannelsAsViewed([]string{post.ChannelId}, post.UserId, clearPushNotifications); err != nil {
+		if _, err := a.MarkChannelsAsViewed([]string{post.ChannelId}, post.UserId, currentSessionId); err != nil {
 			mlog.Error(fmt.Sprintf("Encountered error updating last viewed, channel_id=%s, user_id=%s, err=%v", post.ChannelId, post.UserId, err))
 		}
 	}
@@ -108,11 +81,10 @@ func (a *App) CreatePostAsUser(post *model.Post, clearPushNotifications bool) (*
 }
 
 func (a *App) CreatePostMissingChannel(post *model.Post, triggerWebhooks bool) (*model.Post, *model.AppError) {
-	result := <-a.Srv.Store.Channel().Get(post.ChannelId, true)
-	if result.Err != nil {
-		return nil, result.Err
+	channel, err := a.Srv.Store.Channel().Get(post.ChannelId, true)
+	if err != nil {
+		return nil, err
 	}
-	channel := result.Data.(*model.Channel)
 
 	return a.CreatePost(post, channel, triggerWebhooks)
 }
@@ -189,11 +161,14 @@ func (a *App) CreatePost(post *model.Post, channel *model.Channel, triggerWebhoo
 		pchan = a.Srv.Store.Post().Get(post.RootId)
 	}
 
-	result := <-a.Srv.Store.User().Get(post.UserId)
-	if result.Err != nil {
-		return nil, result.Err
+	user, err := a.Srv.Store.User().Get(post.UserId)
+	if err != nil {
+		return nil, err
 	}
-	user := result.Data.(*model.User)
+
+	if user.IsBot {
+		post.AddProp("from_bot", "true")
+	}
 
 	if a.License() != nil && *a.Config().TeamSettings.ExperimentalTownSquareIsReadOnly &&
 		!post.IsSystemMessage() &&
@@ -205,13 +180,18 @@ func (a *App) CreatePost(post *model.Post, channel *model.Channel, triggerWebhoo
 	// Verify the parent/child relationships are correct
 	var parentPostList *model.PostList
 	if pchan != nil {
-		result = <-pchan
+		result := <-pchan
 		if result.Err != nil {
 			return nil, model.NewAppError("createPost", "api.post.create_post.root_id.app_error", nil, "", http.StatusBadRequest)
 		}
 		parentPostList = result.Data.(*model.PostList)
 		if len(parentPostList.Posts) == 0 || !parentPostList.IsChannelId(post.ChannelId) {
 			return nil, model.NewAppError("createPost", "api.post.create_post.channel_root_id.app_error", nil, "", http.StatusInternalServerError)
+		}
+
+		rootPost := parentPostList.Posts[post.RootId]
+		if len(rootPost.RootId) > 0 {
+			return nil, model.NewAppError("createPost", "api.post.create_post.root_id.app_error", nil, "", http.StatusBadRequest)
 		}
 
 		if post.ParentId == "" {
@@ -265,7 +245,7 @@ func (a *App) CreatePost(post *model.Post, channel *model.Channel, triggerWebhoo
 		}
 	}
 
-	result = <-a.Srv.Store.Post().Save(post)
+	result := <-a.Srv.Store.Post().Save(post)
 	if result.Err != nil {
 		return nil, result.Err
 	}
@@ -288,7 +268,9 @@ func (a *App) CreatePost(post *model.Post, channel *model.Channel, triggerWebhoo
 	esInterface := a.Elasticsearch
 	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableIndexing {
 		a.Srv.Go(func() {
-			esInterface.IndexPost(rpost, channel.TeamId)
+			if err := esInterface.IndexPost(rpost, channel.TeamId); err != nil {
+				mlog.Error("Encountered error indexing post", mlog.String("post_id", post.Id), mlog.Err(err))
+			}
 		})
 	}
 
@@ -382,14 +364,14 @@ func (a *App) FillInPostProps(post *model.Post, channel *model.Channel) *model.A
 	return nil
 }
 
-func (a *App) handlePostEvents(post *model.Post, user *model.User, channel *model.Channel, triggerWebhooks bool, parentPostList *model.PostList) *model.AppError {
+func (a *App) handlePostEvents(post *model.Post, user *model.User, channel *model.Channel, triggerWebhooks bool, parentPostList *model.PostList) error {
 	var team *model.Team
 	if len(channel.TeamId) > 0 {
-		result := <-a.Srv.Store.Team().Get(channel.TeamId)
-		if result.Err != nil {
-			return result.Err
+		t, err := a.Srv.Store.Team().Get(channel.TeamId)
+		if err != nil {
+			return err
 		}
-		team = result.Data.(*model.Team)
+		team = t
 	} else {
 		// Blank team for DMs
 		team = &model.Team{}
@@ -427,8 +409,41 @@ func (a *App) SendEphemeralPost(userId string, post *model.Post) *model.Post {
 		post.Props = model.StringInterface{}
 	}
 
+	post.GenerateActionIds()
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_EPHEMERAL_MESSAGE, "", post.ChannelId, userId, nil)
-	message.Add("post", a.PreparePostForClient(post, true).ToJson())
+	post = a.PreparePostForClient(post, true)
+	post = model.AddPostActionCookies(post, a.PostActionCookieSecret())
+	message.Add("post", post.ToJson())
+	a.Publish(message)
+
+	return post
+}
+
+func (a *App) UpdateEphemeralPost(userId string, post *model.Post) *model.Post {
+	post.Type = model.POST_EPHEMERAL
+
+	post.UpdateAt = model.GetMillis()
+	if post.Props == nil {
+		post.Props = model.StringInterface{}
+	}
+
+	post.GenerateActionIds()
+	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_EDITED, "", post.ChannelId, userId, nil)
+	post = a.PreparePostForClient(post, true)
+	post = model.AddPostActionCookies(post, a.PostActionCookieSecret())
+	message.Add("post", post.ToJson())
+	a.Publish(message)
+
+	return post
+}
+
+func (a *App) DeleteEphemeralPost(userId string, post *model.Post) *model.Post {
+	post.Type = model.POST_EPHEMERAL
+	post.DeleteAt = model.GetMillis()
+	post.UpdateAt = post.DeleteAt
+	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_DELETED, "", post.ChannelId, userId, nil)
+
+	message.Add("post", post.ToJson())
 	a.Publish(message)
 
 	return post
@@ -436,48 +451,6 @@ func (a *App) SendEphemeralPost(userId string, post *model.Post) *model.Post {
 
 func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model.AppError) {
 	post.SanitizeProps()
-	propsEncoded, e := json.Marshal(post.Props)
-	if e != nil {
-		return nil,model.NewAppError("UpdatePost", "api.post.update_post.cannot_encode_props.app_error", nil, e.Error(), http.StatusBadRequest)
-	}
-
-	userId := a.Session.UserId
-	if userId != post.UserId && !strings.Contains(string(propsEncoded), "matterpoll") {
-		err := model.NewAppError("UpdatePost", "api.post.update_post.access_denied.app_error", nil, "id="+post.Id, http.StatusBadRequest)
-		return nil, err
-	}
-
-	/*result := <-a.Srv.Store.Channel().Get(post.ChannelId, true)
-	if result.Err != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
-		return nil, err
-	}
-	channel := result.Data.(*model.Channel)
-
-	channelId := channel.Id
-
-	user, e := a.GetUser(userId)
-	if e != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
-		return nil, err
-	}
-	azureGroups := strings.Fields(user.AzureGroups)
-
-	var channelRole string
-	if post.RootId != "" || post.ParentId != "" {
-		channelRole = "replier"
-	} else {
-		channelRole = "member"
-	}
-	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, channelRole)
-	if e != nil {
-		err := model.NewAppError("UpdatePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
-		return nil, err
-	}
-	if !granted {
-		err := model.NewAppError("UpdatePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
-		return nil, err
-	}*/
 
 	result := <-a.Srv.Store.Post().Get(post.Id)
 	if result.Err != nil {
@@ -507,6 +480,16 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 		}
 	}
 
+	channel, err := a.GetChannel(oldPost.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+
+	if channel.DeleteAt != 0 {
+		err := model.NewAppError("UpdatePost", "api.post.update_post.can_not_update_post_in_deleted.error", nil, "", http.StatusBadRequest)
+		return nil, err
+	}
+
 	newPost := &model.Post{}
 	*newPost = *oldPost
 
@@ -521,6 +504,11 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 		newPost.HasReactions = post.HasReactions
 		newPost.FileIds = post.FileIds
 		newPost.Props = post.Props
+	}
+
+	// Avoid deep-equal checks if EditAt was already modified through message change
+	if newPost.EditAt == oldPost.EditAt && (!oldPost.FileIds.Equals(newPost.FileIds) || !oldPost.AttachmentsEqual(newPost)) {
+		newPost.EditAt = model.GetMillis()
 	}
 
 	if err := a.FillInPostProps(post, nil); err != nil {
@@ -563,13 +551,17 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 				mlog.Error(fmt.Sprintf("Couldn't get channel %v for post %v for Elasticsearch indexing.", rpost.ChannelId, rpost.Id))
 				return
 			}
-			esInterface.IndexPost(rpost, rchannel.Data.(*model.Channel).TeamId)
+			if err := esInterface.IndexPost(rpost, rchannel.Data.(*model.Channel).TeamId); err != nil {
+				mlog.Error("Encountered error indexing post", mlog.String("post_id", post.Id), mlog.Err(err))
+			}
 		})
 	}
 
 	rpost = a.PreparePostForClient(rpost, false)
 
-	a.sendUpdatedPostEvent(rpost)
+	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_EDITED, "", rpost.ChannelId, "", nil)
+	message.Add("post", rpost.ToJson())
+	a.Publish(message)
 
 	a.InvalidateCacheForChannelPosts(rpost.ChannelId)
 
@@ -579,6 +571,16 @@ func (a *App) UpdatePost(post *model.Post, safeUpdate bool) (*model.Post, *model
 func (a *App) PatchPost(postId string, patch *model.PostPatch) (*model.Post, *model.AppError) {
 	post, err := a.GetSinglePost(postId)
 	if err != nil {
+		return nil, err
+	}
+
+	channel, err := a.GetChannel(post.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+
+	if channel.DeleteAt != 0 {
+		err = model.NewAppError("PatchPost", "api.post.patch_post.can_not_update_post_in_deleted.error", nil, "", http.StatusBadRequest)
 		return nil, err
 	}
 
@@ -592,39 +594,7 @@ func (a *App) PatchPost(postId string, patch *model.PostPatch) (*model.Post, *mo
 	return updatedPost, nil
 }
 
-func (a *App) sendUpdatedPostEvent(post *model.Post) {
-	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_EDITED, "", post.ChannelId, "", nil)
-	message.Add("post", post.ToJson())
-	a.Publish(message)
-}
-
-func (a *App) checkViewerCreds(channelId string) (bool, *model.AppError) {
-return true, nil
-	userId := a.Session.UserId
-	user, e := a.GetUser(userId)
-	if e != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
-		return false, err
-	}
-	azureGroups := strings.Fields(user.AzureGroups)
-	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, "viewer")
-	if e != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
-		return false, err
-	}
-	return granted, nil
-}
-
 func (a *App) GetPostsPage(channelId string, page int, perPage int) (*model.PostList, *model.AppError) {
-/*
-	granted, err := a.checkViewerCreds(channelId)
-	if err != nil {
-		return nil, err
-	}
-	if !granted {
-		return &model.PostList{}, nil
-	}
-*/
 	result := <-a.Srv.Store.Post().GetPosts(channelId, page*perPage, perPage, true)
 	if result.Err != nil {
 		return nil, result.Err
@@ -633,14 +603,6 @@ func (a *App) GetPostsPage(channelId string, page int, perPage int) (*model.Post
 }
 
 func (a *App) GetPosts(channelId string, offset int, limit int) (*model.PostList, *model.AppError) {
-	granted, err := a.checkViewerCreds(channelId)
-	if err != nil {
-		return nil, err
-	}
-	if !granted {
-		return &model.PostList{}, nil
-	}
-
 	result := <-a.Srv.Store.Post().GetPosts(channelId, offset, limit, true)
 	if result.Err != nil {
 		return nil, result.Err
@@ -712,14 +674,6 @@ func (a *App) GetPermalinkPost(postId string, userId string) (*model.PostList, *
 	}
 	post := list.Posts[list.Order[0]]
 
-	granted, err := a.checkViewerCreds(post.ChannelId)
-	if err != nil {
-		return nil, err
-	}
-	if !granted {
-		return &model.PostList{}, nil
-	}
-
 	channel, err := a.GetChannel(post.ChannelId)
 	if err != nil {
 		return nil, err
@@ -770,60 +724,21 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 		return nil, result.Err
 	}
 	post := result.Data.(*model.Post)
-/*
-	result = <-a.Srv.Store.Channel().Get(post.ChannelId, true)
-	if result.Err != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_param.app_error", map[string]interface{}{"Name": "post.channel_id"}, result.Err.Error(), http.StatusBadRequest)
+
+	channel, err := a.GetChannel(post.ChannelId)
+	if err != nil {
 		return nil, err
 	}
-	channel := result.Data.(*model.Channel)
 
-	channelId := channel.Id
-*/
-	userId := a.Session.UserId
-	if post.UserId != userId {
-		user, e := a.GetUser(userId)
-		if e != nil {
-			err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
-			return nil, err
-		}
-		if !strings.Contains(user.Roles, "system_admin") {
-			err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
-			return nil, err
-		}
+	if channel.DeleteAt != 0 {
+		err := model.NewAppError("DeletePost", "api.post.delete_post.can_not_delete_post_in_deleted.error", nil, "", http.StatusBadRequest)
+		return nil, err
 	}
+
 	if result := <-a.Srv.Store.Post().Delete(postId, model.GetMillis(), deleteByID); result.Err != nil {
 		return nil, result.Err
 	}
-/*
-	user, e := a.GetUser(userId)
-	if e != nil {
-		err := model.NewAppError("CreatePostAsUser", "api.context.invalid_user.app_error", map[string]interface{}{"Name": "post.user_id"}, e.Error(), http.StatusBadRequest)
-		return nil, err
-	}
-	azureGroups := strings.Fields(user.AzureGroups)
 
-	var channelRole string
-	if post.UserId == userId {
-		if post.RootId != "" || post.ParentId != "" {
-			channelRole = "replier"
-		} else {
-			channelRole = "member"
-		}
-	} else {
-		channelRole = "moderator"
-	}
-
-	granted, e := a.CheckChannelCreds(channelId, *user.AuthData, azureGroups, channelRole)
-	if e != nil {
-		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, e.Error(), http.StatusBadRequest)
-		return nil, err
-	}
-	if !granted {
-		err := model.NewAppError("DeletePost", "api.context.check_channel_creds.app_error", map[string]interface{}{}, "This user can't delete this post", http.StatusBadRequest)
-		return nil, err
-	}
-*/
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_DELETED, "", post.ChannelId, "", nil)
 	message.Add("post", a.PreparePostForClient(post, false).ToJson())
 	a.Publish(message)
@@ -838,7 +753,9 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 	esInterface := a.Elasticsearch
 	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableIndexing {
 		a.Srv.Go(func() {
-			esInterface.DeletePost(post)
+			if err := esInterface.DeletePost(post); err != nil {
+				mlog.Error("Encountered error deleting post", mlog.String("post_id", post.Id), mlog.Err(err))
+			}
 		})
 	}
 
@@ -867,7 +784,7 @@ func (a *App) DeletePostFiles(post *model.Post) {
 func (a *App) parseAndFetchChannelIdByNameFromInFilter(channelName, userId, teamId string, includeDeleted bool) (*model.Channel, error) {
 	if strings.HasPrefix(channelName, "@") && strings.Contains(channelName, ",") {
 		var userIds []string
-		users, err := a.GetUsersByUsernames(strings.Split(channelName[1:], ","), false)
+		users, err := a.GetUsersByUsernames(strings.Split(channelName[1:], ","), false, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -901,7 +818,42 @@ func (a *App) parseAndFetchChannelIdByNameFromInFilter(channelName, userId, team
 	return channel, nil
 }
 
-func (a *App) SearchPostsInTeam(terms string, userId string, teamId string, isOrSearch bool, includeDeletedChannels bool, timeZoneOffset int, page, perPage int) (*model.PostSearchResults, *model.AppError) {
+func (a *App) searchPostsInTeam(teamId string, userId string, paramsList []*model.SearchParams, modifierFun func(*model.SearchParams)) (*model.PostList, *model.AppError) {
+	channels := []store.StoreChannel{}
+
+	for _, params := range paramsList {
+		// Don't allow users to search for everything.
+		if params.Terms == "*" {
+			continue
+		}
+		modifierFun(params)
+		channels = append(channels, a.Srv.Store.Post().Search(teamId, userId, params))
+	}
+
+	posts := model.NewPostList()
+	for _, channel := range channels {
+		result := <-channel
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		data := result.Data.(*model.PostList)
+		posts.Extend(data)
+	}
+
+	posts.SortByCreateAt()
+	return posts, nil
+}
+
+func (a *App) SearchPostsInTeam(teamId string, paramsList []*model.SearchParams) (*model.PostList, *model.AppError) {
+	if !*a.Config().ServiceSettings.EnablePostSearch {
+		return nil, model.NewAppError("SearchPostsInTeam", "store.sql_post.search.disabled", nil, fmt.Sprintf("teamId=%v", teamId), http.StatusNotImplemented)
+	}
+	return a.searchPostsInTeam(teamId, "", paramsList, func(params *model.SearchParams) {
+		params.SearchWithoutUserId = true
+	})
+}
+
+func (a *App) SearchPostsInTeamForUser(terms string, userId string, teamId string, isOrSearch bool, includeDeletedChannels bool, timeZoneOffset int, page, perPage int) (*model.PostSearchResults, *model.AppError) {
 	paramsList := model.ParseSearchParams(terms, timeZoneOffset)
 	includeDeleted := includeDeletedChannels && *a.Config().TeamSettings.ExperimentalViewArchivedChannels
 
@@ -973,7 +925,7 @@ func (a *App) SearchPostsInTeam(terms string, userId string, teamId string, isOr
 	}
 
 	if !*a.Config().ServiceSettings.EnablePostSearch {
-		return nil, model.NewAppError("SearchPostsInTeam", "store.sql_post.search.disabled", nil, fmt.Sprintf("teamId=%v userId=%v", teamId, userId), http.StatusNotImplemented)
+		return nil, model.NewAppError("SearchPostsInTeamForUser", "store.sql_post.search.disabled", nil, fmt.Sprintf("teamId=%v userId=%v", teamId, userId), http.StatusNotImplemented)
 	}
 
 	// Since we don't support paging we just return nothing for later pages
@@ -981,39 +933,23 @@ func (a *App) SearchPostsInTeam(terms string, userId string, teamId string, isOr
 		return model.MakePostSearchResults(model.NewPostList(), nil), nil
 	}
 
-	channels := []store.StoreChannel{}
-
-	for _, params := range paramsList {
+	posts, err := a.searchPostsInTeam(teamId, userId, paramsList, func(params *model.SearchParams) {
 		params.IncludeDeletedChannels = includeDeleted
 		params.OrTerms = isOrSearch
-		// don't allow users to search for everything
-		if params.Terms != "*" {
-			for idx, channelName := range params.InChannels {
-				if strings.HasPrefix(channelName, "@") {
-					channel, err := a.parseAndFetchChannelIdByNameFromInFilter(channelName, userId, teamId, includeDeletedChannels)
-					if err != nil {
-						mlog.Error(fmt.Sprint(err))
-						continue
-					}
-					params.InChannels[idx] = channel.Name
+		for idx, channelName := range params.InChannels {
+			if strings.HasPrefix(channelName, "@") {
+				channel, err := a.parseAndFetchChannelIdByNameFromInFilter(channelName, userId, teamId, includeDeletedChannels)
+				if err != nil {
+					mlog.Error(fmt.Sprint(err))
+					continue
 				}
+				params.InChannels[idx] = channel.Name
 			}
-			channels = append(channels, a.Srv.Store.Post().Search(teamId, userId, params))
 		}
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	posts := model.NewPostList()
-	for _, channel := range channels {
-		result := <-channel
-		if result.Err != nil {
-			return nil, result.Err
-		}
-		data := result.Data.(*model.PostList)
-		posts.Extend(data)
-	}
-
-	posts.SortByCreateAt()
-
 	return model.MakePostSearchResults(posts, nil), nil
 }
 

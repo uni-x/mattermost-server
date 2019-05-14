@@ -6,13 +6,13 @@ package app
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPluginCommand(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	args := &model.CommandArgs{}
@@ -37,8 +37,8 @@ func TestPluginCommand(t *testing.T) {
 			package main
 
 			import (
-				"github.com/uni-x/mattermost-server/plugin"
-				"github.com/uni-x/mattermost-server/model"
+				"github.com/mattermost/mattermost-server/plugin"
+				"github.com/mattermost/mattermost-server/model"
 			)
 
 			type configuration struct {

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func IsPasswordValid(password string) *model.AppError {

@@ -55,6 +55,19 @@ func TestConfigDefaults(t *testing.T) {
 	})
 }
 
+func TestConfigEmptySiteName(t *testing.T) {
+	c1 := Config{
+		TeamSettings: TeamSettings{
+			SiteName: NewString(""),
+		},
+	}
+	c1.SetDefaults()
+
+	if *c1.TeamSettings.SiteName != TEAM_SETTINGS_DEFAULT_SITE_NAME {
+		t.Fatal("TeamSettings.SiteName should default to " + TEAM_SETTINGS_DEFAULT_SITE_NAME)
+	}
+}
+
 func TestConfigDefaultFileSettingsDirectory(t *testing.T) {
 	c1 := Config{}
 	c1.SetDefaults()
@@ -111,6 +124,33 @@ func TestConfigDefaultServiceSettingsExperimentalGroupUnreadChannels(t *testing.
 
 	if *c1.ServiceSettings.ExperimentalGroupUnreadChannels != GROUP_UNREAD_CHANNELS_DISABLED {
 		t.Fatal("ServiceSettings.ExperimentalGroupUnreadChannels should set false to 'disabled'")
+	}
+}
+
+func TestConfigDefaultNPSPluginState(t *testing.T) {
+	c1 := Config{}
+	c1.SetDefaults()
+
+	if c1.PluginSettings.PluginStates["com.mattermost.nps"].Enable != true {
+		t.Fatal("PluginSettings.PluginStates[\"com.mattermost.nps\"].Enable should default to true")
+	}
+
+	c1.PluginSettings.PluginStates["com.mattermost.nps"].Enable = false
+	c1.SetDefaults()
+	if c1.PluginSettings.PluginStates["com.mattermost.nps"].Enable != false {
+		t.Fatal("PluginSettings.PluginStates[\"com.mattermost.nps\"].Enable should remain false")
+	}
+}
+
+func TestTeamSettingsIsValidSiteNameEmpty(t *testing.T) {
+	c1 := Config{}
+	c1.SetDefaults()
+	c1.TeamSettings.SiteName = NewString("")
+
+	// should fail fast because ts.SiteName is not set
+	err := c1.TeamSettings.isValid()
+	if err == nil {
+		t.Fatal("TeamSettings validation should fail with an empty SiteName")
 	}
 }
 
@@ -576,7 +616,7 @@ func TestImageProxySettingsSetDefaults(t *testing.T) {
 		ips := ImageProxySettings{}
 		ips.SetDefaults(ServiceSettings{})
 
-		assert.Equal(t, true, *ips.Enable)
+		assert.Equal(t, false, *ips.Enable)
 		assert.Equal(t, IMAGE_PROXY_TYPE_LOCAL, *ips.ImageProxyType)
 		assert.Equal(t, "", *ips.RemoteImageProxyURL)
 		assert.Equal(t, "", *ips.RemoteImageProxyOptions)
@@ -681,6 +721,159 @@ func TestImageProxySettingsIsValid(t *testing.T) {
 			}
 
 			err := ips.isValid()
+			if test.ExpectError {
+				assert.NotNil(t, err)
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
+}
+
+func TestLdapSettingsIsValid(t *testing.T) {
+	for _, test := range []struct {
+		Name         string
+		LdapSettings LdapSettings
+		ExpectError  bool
+	}{
+		{
+			Name: "disabled",
+			LdapSettings: LdapSettings{
+				Enable: NewBool(false),
+			},
+			ExpectError: false,
+		},
+		{
+			Name: "missing server",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString(""),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString(""),
+			},
+			ExpectError: true,
+		},
+		{
+			Name: "empty user filter",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString(""),
+			},
+			ExpectError: false,
+		},
+		{
+			Name: "valid user filter #1",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString("(property=value)"),
+			},
+			ExpectError: false,
+		},
+		{
+			Name: "invalid user filter #1",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString("("),
+			},
+			ExpectError: true,
+		},
+		{
+			Name: "invalid user filter #2",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString("()"),
+			},
+			ExpectError: true,
+		},
+		{
+			Name: "valid user filter #2",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString("(&(property=value)(otherthing=othervalue))"),
+			},
+			ExpectError: false,
+		},
+		{
+			Name: "valid user filter #3",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString("(&(property=value)(|(otherthing=othervalue)(other=thing)))"),
+			},
+			ExpectError: false,
+		},
+		{
+			Name: "invalid user filter #3",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString("(&(property=value)(|(otherthing=othervalue)(other=thing))"),
+			},
+			ExpectError: true,
+		},
+		{
+			Name: "invalid user filter #4",
+			LdapSettings: LdapSettings{
+				Enable:            NewBool(true),
+				LdapServer:        NewString("server"),
+				BaseDN:            NewString("basedn"),
+				EmailAttribute:    NewString("email"),
+				UsernameAttribute: NewString("username"),
+				IdAttribute:       NewString("id"),
+				LoginIdAttribute:  NewString("loginid"),
+				UserFilter:        NewString("(&(property=value)((otherthing=othervalue)(other=thing)))"),
+			},
+			ExpectError: true,
+		},
+	} {
+		t.Run(test.Name, func(t *testing.T) {
+			test.LdapSettings.SetDefaults()
+
+			err := test.LdapSettings.isValid()
 			if test.ExpectError {
 				assert.NotNil(t, err)
 			} else {

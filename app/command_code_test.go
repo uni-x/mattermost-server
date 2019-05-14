@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestCodeProviderDoCommand(t *testing.T) {

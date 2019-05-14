@@ -4,15 +4,12 @@
 package sqlstore
 
 import (
-	"os"
 	"sync"
 	"testing"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
-	"github.com/uni-x/mattermost-server/store/storetest"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/store/storetest"
 )
 
 type storeType struct {
@@ -98,27 +95,4 @@ func tearDownStores() {
 		}
 		wg.Wait()
 	})
-}
-
-func TestMain(m *testing.M) {
-	// Setup a global logger to catch tests logging outside of app context
-	// The global logger will be stomped by apps initalizing but that's fine for testing. Ideally this won't happen.
-	mlog.InitGlobalLogger(mlog.NewLogger(&mlog.LoggerConfiguration{
-		EnableConsole: true,
-		ConsoleJson:   true,
-		ConsoleLevel:  "error",
-		EnableFile:    false,
-	}))
-
-	utils.TranslationsPreInit()
-
-	status := 0
-
-	initStores()
-	defer func() {
-		tearDownStores()
-		os.Exit(status)
-	}()
-
-	status = m.Run()
 }

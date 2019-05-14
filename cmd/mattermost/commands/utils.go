@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/mlog"
 )
 
 // prettyPrintStruct will return a prettyPrint version of a given struct

@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/uni-x/mattermost-server/api4"
-	"github.com/uni-x/mattermost-server/testlib"
+	"github.com/mattermost/mattermost-server/api4"
+	"github.com/mattermost/mattermost-server/testlib"
 )
 
 func TestMain(m *testing.M) {
@@ -22,9 +22,15 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	mainHelper = testlib.NewMainHelper()
+	var options = testlib.HelperOptions{
+		EnableStore:     true,
+		EnableResources: true,
+	}
+
+	mainHelper = testlib.NewMainHelperWithOptions(&options)
 	defer mainHelper.Close()
-	api4.UseTestStore(mainHelper.Store)
+
+	api4.UseTestStore(mainHelper.GetStore())
 
 	mainHelper.Main(m)
 }

@@ -6,15 +6,20 @@ package api4
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/testlib"
+	"github.com/mattermost/mattermost-server/testlib"
 )
 
 var mainHelper *testlib.MainHelper
 
 func TestMain(m *testing.M) {
-	mainHelper = testlib.NewMainHelper()
-	defer mainHelper.Close()
-	UseTestStore(mainHelper.Store)
+	var options = testlib.HelperOptions{
+		EnableStore:     true,
+		EnableResources: true,
+	}
 
+	mainHelper = testlib.NewMainHelperWithOptions(&options)
+	defer mainHelper.Close()
+
+	UseTestStore(mainHelper.GetStore())
 	mainHelper.Main(m)
 }

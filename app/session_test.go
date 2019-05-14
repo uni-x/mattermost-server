@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestCache(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	session := &model.Session{
@@ -38,7 +38,7 @@ func TestCache(t *testing.T) {
 }
 
 func TestGetSessionIdleTimeoutInMinutes(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	session := &model.Session{
@@ -65,20 +65,6 @@ func TestGetSessionIdleTimeoutInMinutes(t *testing.T) {
 	assert.Equal(t, "idle timeout", err.DetailedError)
 	assert.Nil(t, rsession)
 
-	// Test mobile session, should not timeout
-	session = &model.Session{
-		UserId:   model.NewId(),
-		DeviceId: "android:" + model.NewId(),
-	}
-
-	session, _ = th.App.CreateSession(session)
-	time = session.LastActivityAt - (1000 * 60 * 6)
-	<-th.App.Srv.Store.Session().UpdateLastActivityAt(session.Id, time)
-	th.App.ClearSessionCacheForUserSkipClusterSend(session.UserId)
-
-	_, err = th.App.GetSession(session.Token)
-	assert.Nil(t, err)
-
 	// Test oauth session, should not timeout
 	session = &model.Session{
 		UserId:  model.NewId(),
@@ -98,21 +84,6 @@ func TestGetSessionIdleTimeoutInMinutes(t *testing.T) {
 		UserId: model.NewId(),
 	}
 	session.AddProp(model.SESSION_PROP_TYPE, model.SESSION_TYPE_USER_ACCESS_TOKEN)
-
-	session, _ = th.App.CreateSession(session)
-	time = session.LastActivityAt - (1000 * 60 * 6)
-	<-th.App.Srv.Store.Session().UpdateLastActivityAt(session.Id, time)
-	th.App.ClearSessionCacheForUserSkipClusterSend(session.UserId)
-
-	_, err = th.App.GetSession(session.Token)
-	assert.Nil(t, err)
-
-	// Test regular session with license off, should not timeout
-	th.App.SetLicense(nil)
-
-	session = &model.Session{
-		UserId: model.NewId(),
-	}
 
 	session, _ = th.App.CreateSession(session)
 	time = session.LastActivityAt - (1000 * 60 * 6)

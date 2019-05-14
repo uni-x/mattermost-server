@@ -4,16 +4,21 @@
 package app
 
 import (
+	"bufio"
 	"crypto/tls"
+	"github.com/mattermost/mattermost-server/mlog"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/config"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils/fileutils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,14 +37,20 @@ func TestStartServerSuccess(t *testing.T) {
 }
 
 func TestStartServerRateLimiterCriticalError(t *testing.T) {
-	s, err := NewServer()
+	// Attempt to use Rate Limiter with an invalid config
+	ms, err := config.NewMemoryStoreWithOptions(&config.MemoryStoreOptions{
+		SkipValidation: true,
+	})
 	require.NoError(t, err)
 
-	// Attempt to use Rate Limiter with an invalid config
-	s.UpdateConfig(func(cfg *model.Config) {
-		*cfg.RateLimitSettings.Enable = true
-		*cfg.RateLimitSettings.MaxBurst = -100
-	})
+	config := ms.Get()
+	*config.RateLimitSettings.Enable = true
+	*config.RateLimitSettings.MaxBurst = -100
+	_, err = ms.Set(config)
+	require.NoError(t, err)
+
+	s, err := NewServer(ConfigStore(ms))
+	require.NoError(t, err)
 
 	serverErr := s.Start()
 	s.Shutdown()
@@ -199,4 +210,77 @@ func checkEndpoint(t *testing.T, client *http.Client, url string, expectedStatus
 	}
 
 	return nil
+}
+
+func TestPanicLog(t *testing.T) {
+	// Creating a temp file to collect logs
+	tmpfile, err := ioutil.TempFile("", "mlog")
+	if err != nil {
+		require.NoError(t, err)
+	}
+
+	defer func() {
+		require.NoError(t, tmpfile.Close())
+		require.NoError(t, os.Remove(tmpfile.Name()))
+	}()
+
+	// Creating logger to log to console and temp file
+	logger := mlog.NewLogger(&mlog.LoggerConfiguration{
+		EnableConsole: true,
+		ConsoleJson:   true,
+		EnableFile:    true,
+		FileLocation:  tmpfile.Name(),
+		FileLevel:     mlog.LevelInfo,
+	})
+
+	// Creating a server with logger
+	s, err := NewServer(SetLogger(logger))
+	require.NoError(t, err)
+
+	// Route for just panicing
+	s.Router.HandleFunc("/panic", func(writer http.ResponseWriter, request *http.Request) {
+		s.Log.Info("inside panic handler")
+		panic("log this panic")
+	})
+
+	s.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.ListenAddress = ":0" })
+	serverErr := s.Start()
+	require.NoError(t, serverErr)
+
+	// Calling panic route
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	client := &http.Client{Transport: tr}
+	client.Get("https://localhost:" + strconv.Itoa(s.ListenAddr.Port) + "/panic")
+
+	err = s.Shutdown()
+	require.NoError(t, err)
+
+	// Checking whether panic was logged
+	var panicLogged = false
+	var infoLogged = false
+
+	_, err = tmpfile.Seek(0, 0)
+	require.NoError(t, err)
+
+	scanner := bufio.NewScanner(tmpfile)
+	for scanner.Scan() {
+		if !infoLogged && strings.Contains(scanner.Text(), "inside panic handler") {
+			infoLogged = true
+		}
+		if strings.Contains(scanner.Text(), "log this panic") {
+			panicLogged = true
+			break
+		}
+	}
+
+	if !infoLogged {
+		t.Error("Info log line was supposed to be logged")
+	}
+
+	if !panicLogged {
+		t.Error("Panic was supposed to be logged")
+	}
 }

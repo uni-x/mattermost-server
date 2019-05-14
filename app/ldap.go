@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 func (a *App) SyncLdap() {
@@ -61,13 +61,13 @@ func (a *App) GetLdapGroup(ldapGroupID string) (*model.Group, *model.AppError) {
 
 // GetAllLdapGroupsPage retrieves all LDAP groups under the configured base DN using the default or configured group
 // filter.
-func (a *App) GetAllLdapGroupsPage(page int, perPage int) ([]*model.Group, int, *model.AppError) {
+func (a *App) GetAllLdapGroupsPage(page int, perPage int, opts model.LdapGroupSearchOpts) ([]*model.Group, int, *model.AppError) {
 	var groups []*model.Group
 	var total int
 
 	if a.Ldap != nil {
 		var err *model.AppError
-		groups, total, err = a.Ldap.GetAllGroupsPage(page, perPage)
+		groups, total, err = a.Ldap.GetAllGroupsPage(page, perPage, opts)
 		if err != nil {
 			return nil, 0, err
 		}

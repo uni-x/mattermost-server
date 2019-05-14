@@ -4,7 +4,7 @@
 package wsapi
 
 import (
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func (api *API) InitUser() {

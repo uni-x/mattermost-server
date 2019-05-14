@@ -4,13 +4,20 @@
 package imageproxy
 
 import (
+	"errors"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/services/configservice"
-	"github.com/uni-x/mattermost-server/services/httpservice"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/services/configservice"
+	"github.com/mattermost/mattermost-server/services/httpservice"
 )
+
+var ErrNotEnabled = Error{errors.New("imageproxy.ImageProxy: image proxy not enabled")}
 
 // An ImageProxy is the public interface for Mattermost's image proxy. An instance of ImageProxy should be created
 // using MakeImageProxy which requires a configService and an HTTPService provided by the server.
@@ -19,6 +26,8 @@ type ImageProxy struct {
 	configListenerId string
 
 	HTTPService httpservice.HTTPService
+
+	Logger *mlog.Logger
 
 	lock    sync.RWMutex
 	backend ImageProxyBackend
@@ -30,18 +39,15 @@ type ImageProxyBackend interface {
 	// GetImage provides a proxied image in response to an HTTP request.
 	GetImage(w http.ResponseWriter, r *http.Request, imageURL string)
 
-	// GetProxiedImageURL returns the URL to access a given image through the image proxy, whether the image proxy is
-	// running externally or as part of the Mattermost server itself.
-	GetProxiedImageURL(imageURL string) string
-
-	// GetUnproxiedImageURL returns the original URL of an image from one that has been directed at the image proxy.
-	GetUnproxiedImageURL(proxiedURL string) string
+	// GetImageDirect returns a proxied image along with its content type.
+	GetImageDirect(imageURL string) (io.ReadCloser, string, error)
 }
 
-func MakeImageProxy(configService configservice.ConfigService, httpService httpservice.HTTPService) *ImageProxy {
+func MakeImageProxy(configService configservice.ConfigService, httpService httpservice.HTTPService, logger *mlog.Logger) *ImageProxy {
 	proxy := &ImageProxy{
 		ConfigService: configService,
 		HTTPService:   httpService,
+		Logger:        logger,
 	}
 
 	proxy.configListenerId = proxy.ConfigService.AddConfigListener(proxy.OnConfigChange)
@@ -97,27 +103,51 @@ func (proxy *ImageProxy) GetImage(w http.ResponseWriter, r *http.Request, imageU
 	proxy.backend.GetImage(w, r, imageURL)
 }
 
-// GetProxiedImageURL takes the URL of an image and returns a URL that can be used to view that image through the
-// image proxy.
-func (proxy *ImageProxy) GetProxiedImageURL(imageURL string) string {
+// GetImageDirect takes the URL of an image and returns the image along with its content type.
+func (proxy *ImageProxy) GetImageDirect(imageURL string) (io.ReadCloser, string, error) {
 	proxy.lock.RLock()
 	defer proxy.lock.RUnlock()
 
 	if proxy.backend == nil {
+		return nil, "", ErrNotEnabled
+	}
+
+	return proxy.backend.GetImageDirect(imageURL)
+}
+
+// GetProxiedImageURL takes the URL of an image and returns a URL that can be used to view that image through the
+// image proxy.
+func (proxy *ImageProxy) GetProxiedImageURL(imageURL string) string {
+	return getProxiedImageURL(imageURL, *proxy.ConfigService.Config().ServiceSettings.SiteURL)
+}
+
+func getProxiedImageURL(imageURL, siteURL string) string {
+	if imageURL == "" || imageURL[0] == '/' || strings.HasPrefix(imageURL, siteURL) {
 		return imageURL
 	}
 
-	return proxy.backend.GetProxiedImageURL(imageURL)
+	return siteURL + "/api/v4/image?url=" + url.QueryEscape(imageURL)
 }
 
 // GetUnproxiedImageURL takes the URL of an image on the image proxy and returns the original URL of the image.
 func (proxy *ImageProxy) GetUnproxiedImageURL(proxiedURL string) string {
-	proxy.lock.RLock()
-	defer proxy.lock.RUnlock()
+	return getUnproxiedImageURL(proxiedURL, *proxy.ConfigService.Config().ServiceSettings.SiteURL)
+}
 
-	if proxy.backend == nil {
+func getUnproxiedImageURL(proxiedURL, siteURL string) string {
+	if !strings.HasPrefix(proxiedURL, siteURL+"/api/v4/image?url=") {
 		return proxiedURL
 	}
 
-	return proxy.backend.GetUnproxiedImageURL(proxiedURL)
+	parsed, err := url.Parse(proxiedURL)
+	if err != nil {
+		return proxiedURL
+	}
+
+	u := parsed.Query()["url"]
+	if len(u) == 0 {
+		return proxiedURL
+	}
+
+	return u[0]
 }

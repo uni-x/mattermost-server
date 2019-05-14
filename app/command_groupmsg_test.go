@@ -3,10 +3,10 @@ package app
 import (
 	"testing"
 
-	"github.com/nicksnyder/go-i18n/i18n"
+	"github.com/mattermost/go-i18n/i18n"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestGroupMsgUsernames(t *testing.T) {
@@ -42,7 +42,7 @@ func TestGroupMsgUsernames(t *testing.T) {
 }
 
 func TestGroupMsgProvider(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	user3 := th.CreateUser()

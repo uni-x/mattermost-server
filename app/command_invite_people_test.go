@@ -8,18 +8,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestInvitePeopleProvider(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
-	enableEmailInvitations := *th.App.Config().ServiceSettings.EnableEmailInvitations
-	defer func() {
-		th.App.UpdateConfig(func(cfg *model.Config) { cfg.ServiceSettings.EnableEmailInvitations = &enableEmailInvitations })
-	}()
-	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.EnableEmailInvitations = true })
+	th.App.UpdateConfig(func(cfg *model.Config) {
+		*cfg.EmailSettings.SendEmailNotifications = true
+		*cfg.ServiceSettings.EnableEmailInvitations = true
+	})
 
 	cmd := InvitePeopleProvider{}
 

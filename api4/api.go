@@ -7,12 +7,12 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/uni-x/mattermost-server/app"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/services/configservice"
-	"github.com/uni-x/mattermost-server/web"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/services/configservice"
+	"github.com/mattermost/mattermost-server/web"
 
-	_ "github.com/nicksnyder/go-i18n/i18n"
+	_ "github.com/mattermost/go-i18n/i18n"
 )
 
 type Routes struct {
@@ -23,6 +23,9 @@ type Routes struct {
 	User           *mux.Router // 'api/v4/users/{user_id:[A-Za-z0-9]+}'
 	UserByUsername *mux.Router // 'api/v4/users/username/{username:[A-Za-z0-9_-\.]+}'
 	UserByEmail    *mux.Router // 'api/v4/users/email/{email}'
+
+	Bots *mux.Router // 'api/v4/bots'
+	Bot  *mux.Router // 'api/v4/bots/{bot_user_id:[A-Za-z0-9]+}'
 
 	Teams              *mux.Router // 'api/v4/teams'
 	TeamsForUser       *mux.Router // 'api/v4/users/{user_id:[A-Za-z0-9]+}/teams'
@@ -109,8 +112,6 @@ type Routes struct {
 
 	TermsOfService *mux.Router // 'api/v4/terms_of_service
 	Groups         *mux.Router // 'api/v4/groups'
-
-	ApiTokens *mux.Router // 'api/v4/api-tokens'
 }
 
 type API struct {
@@ -133,6 +134,9 @@ func Init(configservice configservice.ConfigService, globalOptionsFunc app.AppOp
 	api.BaseRoutes.User = api.BaseRoutes.ApiRoot.PathPrefix("/users/{user_id:[A-Za-z0-9]+}").Subrouter()
 	api.BaseRoutes.UserByUsername = api.BaseRoutes.Users.PathPrefix("/username/{username:[A-Za-z0-9\\_\\-\\.]+}").Subrouter()
 	api.BaseRoutes.UserByEmail = api.BaseRoutes.Users.PathPrefix("/email/{email}").Subrouter()
+
+	api.BaseRoutes.Bots = api.BaseRoutes.ApiRoot.PathPrefix("/bots").Subrouter()
+	api.BaseRoutes.Bot = api.BaseRoutes.ApiRoot.PathPrefix("/bots/{bot_user_id:[A-Za-z0-9]+}").Subrouter()
 
 	api.BaseRoutes.Teams = api.BaseRoutes.ApiRoot.PathPrefix("/teams").Subrouter()
 	api.BaseRoutes.TeamsForUser = api.BaseRoutes.User.PathPrefix("/teams").Subrouter()
@@ -210,20 +214,20 @@ func Init(configservice configservice.ConfigService, globalOptionsFunc app.AppOp
 	api.BaseRoutes.TermsOfService = api.BaseRoutes.ApiRoot.PathPrefix("/terms_of_service").Subrouter()
 	api.BaseRoutes.Groups = api.BaseRoutes.ApiRoot.PathPrefix("/groups").Subrouter()
 
-	api.BaseRoutes.ApiTokens = api.BaseRoutes.ApiRoot.PathPrefix("/api-tokens").Subrouter()
-
 	api.InitUser()
+	api.InitBot()
 	api.InitTeam()
 	api.InitChannel()
 	api.InitPost()
 	api.InitFile()
 	api.InitSystem()
+	api.InitLicense()
+	api.InitConfig()
 	api.InitWebhook()
 	api.InitPreference()
 	api.InitSaml()
 	api.InitCompliance()
 	api.InitCluster()
-	api.InitApiTokens()
 	api.InitLdap()
 	api.InitElasticsearch()
 	api.InitDataRetention()

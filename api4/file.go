@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uni-x/mattermost-server/app"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const (
@@ -42,6 +42,7 @@ var MEDIA_CONTENT_TYPES = [...]string{
 	"image/png",
 	"image/bmp",
 	"image/gif",
+	"image/tiff",
 	"video/avi",
 	"video/mpeg",
 	"video/mp4",

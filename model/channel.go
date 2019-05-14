@@ -21,7 +21,7 @@ const (
 	CHANNEL_GROUP                  = "G"
 	CHANNEL_GROUP_MAX_USERS        = 8
 	CHANNEL_GROUP_MIN_USERS        = 3
-	DEFAULT_CHANNEL                = "agenda"
+	DEFAULT_CHANNEL                = "town-square"
 	CHANNEL_DISPLAY_NAME_MAX_RUNES = 64
 	CHANNEL_NAME_MIN_LENGTH        = 2
 	CHANNEL_NAME_MAX_LENGTH        = 64
@@ -35,22 +35,23 @@ const (
 )
 
 type Channel struct {
-	Id            string                 `json:"id"`
-	CreateAt      int64                  `json:"create_at"`
-	UpdateAt      int64                  `json:"update_at"`
-	DeleteAt      int64                  `json:"delete_at"`
-	TeamId        string                 `json:"team_id"`
-	Type          string                 `json:"type"`
-	DisplayName   string                 `json:"display_name"`
-	Name          string                 `json:"name"`
-	Header        string                 `json:"header"`
-	Purpose       string                 `json:"purpose"`
-	LastPostAt    int64                  `json:"last_post_at"`
-	TotalMsgCount int64                  `json:"total_msg_count"`
-	ExtraUpdateAt int64                  `json:"extra_update_at"`
-	CreatorId     string                 `json:"creator_id"`
-	SchemeId      *string                `json:"scheme_id"`
-	Props         map[string]interface{} `json:"props" db:"-"`
+	Id               string                 `json:"id"`
+	CreateAt         int64                  `json:"create_at"`
+	UpdateAt         int64                  `json:"update_at"`
+	DeleteAt         int64                  `json:"delete_at"`
+	TeamId           string                 `json:"team_id"`
+	Type             string                 `json:"type"`
+	DisplayName      string                 `json:"display_name"`
+	Name             string                 `json:"name"`
+	Header           string                 `json:"header"`
+	Purpose          string                 `json:"purpose"`
+	LastPostAt       int64                  `json:"last_post_at"`
+	TotalMsgCount    int64                  `json:"total_msg_count"`
+	ExtraUpdateAt    int64                  `json:"extra_update_at"`
+	CreatorId        string                 `json:"creator_id"`
+	SchemeId         *string                `json:"scheme_id"`
+	Props            map[string]interface{} `json:"props" db:"-"`
+	GroupConstrained *bool                  `json:"group_constrained"`
 }
 
 type ChannelWithTeamData struct {
@@ -61,16 +62,22 @@ type ChannelWithTeamData struct {
 }
 
 type ChannelPatch struct {
-	DisplayName *string `json:"display_name"`
-	Name        *string `json:"name"`
-	Header      *string `json:"header"`
-	Purpose     *string `json:"purpose"`
+	DisplayName      *string `json:"display_name"`
+	Name             *string `json:"name"`
+	Header           *string `json:"header"`
+	Purpose          *string `json:"purpose"`
+	GroupConstrained *bool   `json:"group_constrained"`
 }
 
 type ChannelForExport struct {
 	Channel
 	TeamName   string
 	SchemeName *string
+}
+
+type DirectChannelForExport struct {
+	Channel
+	Members *[]string
 }
 
 func (o *Channel) DeepCopy() *Channel {
@@ -181,6 +188,10 @@ func (o *Channel) Patch(patch *ChannelPatch) {
 	if patch.Purpose != nil {
 		o.Purpose = *patch.Purpose
 	}
+
+	if patch.GroupConstrained != nil {
+		o.GroupConstrained = patch.GroupConstrained
+	}
 }
 
 func (o *Channel) MakeNonNil() {
@@ -229,16 +240,4 @@ func GetGroupNameFromUserIds(userIds []string) string {
 	}
 
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-type ChannelCreateData struct {
-	DisplayName string
-	CreatorId   string
-	Credentials *ChannelCreds
-}
-
-func ChannelCreateDataFromJson(data io.Reader) *ChannelCreateData {
-	var o *ChannelCreateData
-	json.NewDecoder(data).Decode(&o)
-	return o
 }

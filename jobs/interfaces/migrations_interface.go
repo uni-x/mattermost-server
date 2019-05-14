@@ -3,7 +3,7 @@
 
 package interfaces
 
-import "github.com/uni-x/mattermost-server/model"
+import "github.com/mattermost/mattermost-server/model"
 
 type MigrationsJobInterface interface {
 	MakeWorker() model.Worker

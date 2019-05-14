@@ -10,20 +10,20 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestPluginDeadlock(t *testing.T) {
 	t.Run("Single Plugin", func(t *testing.T) {
-		th := Setup().InitBasic()
+		th := Setup(t).InitBasic()
 		defer th.TearDown()
 
 		pluginPostOnActivate := template.Must(template.New("pluginPostOnActivate").Parse(`
 			package main
 
 			import (
-				"github.com/uni-x/mattermost-server/plugin"
-				"github.com/uni-x/mattermost-server/model"
+				"github.com/mattermost/mattermost-server/plugin"
+				"github.com/mattermost/mattermost-server/model"
 			)
 
 			type MyPlugin struct {
@@ -103,15 +103,15 @@ func TestPluginDeadlock(t *testing.T) {
 	})
 
 	t.Run("Multiple Plugins", func(t *testing.T) {
-		th := Setup().InitBasic()
+		th := Setup(t).InitBasic()
 		defer th.TearDown()
 
 		pluginPostOnHasBeenPosted := template.Must(template.New("pluginPostOnHasBeenPosted").Parse(`
 			package main
 
 			import (
-				"github.com/uni-x/mattermost-server/plugin"
-				"github.com/uni-x/mattermost-server/model"
+				"github.com/mattermost/mattermost-server/plugin"
+				"github.com/mattermost/mattermost-server/model"
 			)
 
 			type MyPlugin struct {
@@ -145,8 +145,8 @@ func TestPluginDeadlock(t *testing.T) {
 			package main
 
 			import (
-				"github.com/uni-x/mattermost-server/plugin"
-				"github.com/uni-x/mattermost-server/model"
+				"github.com/mattermost/mattermost-server/plugin"
+				"github.com/mattermost/mattermost-server/model"
 			)
 
 			type MyPlugin struct {

@@ -4,11 +4,11 @@
 package sqlstore
 
 import (
+	sq "github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	"github.com/mattermost/gorp"
-
-	"github.com/uni-x/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 /*type SqlStore struct {
@@ -73,6 +73,7 @@ type SqlStore interface {
 	Channel() store.ChannelStore
 	Post() store.PostStore
 	User() store.UserStore
+	Bot() store.BotStore
 	Audit() store.AuditStore
 	ClusterDiscovery() store.ClusterDiscoveryStore
 	Compliance() store.ComplianceStore
@@ -97,4 +98,6 @@ type SqlStore interface {
 	TermsOfService() store.TermsOfServiceStore
 	UserTermsOfService() store.UserTermsOfServiceStore
 	LinkMetadata() store.LinkMetadataStore
+	getQueryBuilder() sq.StatementBuilderType
+	NotificationRegistry() store.NotificationRegistryStore
 }

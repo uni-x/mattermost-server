@@ -6,9 +6,9 @@ package sqlstore
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/store/storetest"
+	"github.com/mattermost/mattermost-server/store/storetest"
 )
 
 func TestPostStore(t *testing.T) {
-	StoreTest(t, storetest.TestPostStore)
+	StoreTestWithSqlSupplier(t, storetest.TestPostStore)
 }

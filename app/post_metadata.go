@@ -4,6 +4,7 @@
 package app
 
 import (
+	"bytes"
 	"image"
 	"io"
 	"net/http"
@@ -12,14 +13,16 @@ import (
 	"time"
 
 	"github.com/dyatlov/go-opengraph/opengraph"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
-	"github.com/uni-x/mattermost-server/utils/markdown"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/utils/imgutils"
+	"github.com/mattermost/mattermost-server/utils/markdown"
 )
 
 const LINK_CACHE_SIZE = 10000
 const LINK_CACHE_DURATION = 3600
+const MaxMetadataImageSize = MaxOpenGraphResponseSize
 
 var linkCache = utils.NewLru(LINK_CACHE_SIZE)
 
@@ -56,7 +59,7 @@ func (a *App) PreparePostForClient(originalPost *model.Post, isNewPost bool) *mo
 	// Proxy image links before constructing metadata so that requests go through the proxy
 	post = a.PostWithProxyAddedToImageURLs(post)
 
-	if !*a.Config().ExperimentalSettings.EnablePostMetadata {
+	if *a.Config().ExperimentalSettings.DisablePostMetadata {
 		return post
 	}
 
@@ -81,7 +84,7 @@ func (a *App) PreparePostForClient(originalPost *model.Post, isNewPost bool) *mo
 	firstLink, images := getFirstLinkAndImages(post.Message)
 
 	if embed, err := a.getEmbedForPost(post, firstLink, isNewPost); err != nil {
-		mlog.Warn("Failed to get embedded content for a post", mlog.String("post_id", post.Id), mlog.Any("err", err))
+		mlog.Debug("Failed to get embedded content for a post", mlog.String("post_id", post.Id), mlog.Any("err", err))
 	} else if embed == nil {
 		post.Metadata.Embeds = []*model.PostEmbed{}
 	} else {
@@ -126,7 +129,7 @@ func (a *App) getEmbedForPost(post *model.Post, firstLink string, isNewPost bool
 		}, nil
 	}
 
-	if firstLink == "" {
+	if firstLink == "" || !*a.Config().ServiceSettings.EnableLinkPreviews {
 		return nil, nil
 	}
 
@@ -144,7 +147,7 @@ func (a *App) getEmbedForPost(post *model.Post, firstLink string, isNewPost bool
 	}
 
 	if image != nil {
-		// Note that we're not passing the image info here since they'll be part of the PostMetadata.Images field
+		// Note that we're not passing the image info here since it'll be part of the PostMetadata.Images field
 		return &model.PostEmbed{
 			Type: model.POST_EMBED_IMAGE,
 			URL:  firstLink,
@@ -168,16 +171,18 @@ func (a *App) getImagesForPost(post *model.Post, imageURLs []string, isNewPost b
 
 		case model.POST_EMBED_OPENGRAPH:
 			for _, image := range embed.Data.(*opengraph.OpenGraph).Images {
-				if image.Width != 0 || image.Height != 0 {
-					// The site has already told us the image dimensions
-					images[image.URL] = &model.PostImage{
-						Width:  int(image.Width),
-						Height: int(image.Height),
-					}
-				} else {
-					// The site did not specify its image dimensions
-					imageURLs = append(imageURLs, image.URL)
+				var imageURL string
+				if image.SecureURL != "" {
+					imageURL = image.SecureURL
+				} else if image.URL != "" {
+					imageURL = image.URL
 				}
+
+				if imageURL == "" {
+					continue
+				}
+
+				imageURLs = append(imageURLs, imageURL)
 			}
 		}
 	}
@@ -189,9 +194,9 @@ func (a *App) getImagesForPost(post *model.Post, imageURLs []string, isNewPost b
 
 	for _, imageURL := range imageURLs {
 		if _, image, err := a.getLinkMetadata(imageURL, post.CreateAt, isNewPost); err != nil {
-			mlog.Warn("Failed to get dimensions of an image in a post",
+			mlog.Debug("Failed to get dimensions of an image in a post",
 				mlog.String("post_id", post.Id), mlog.String("image_url", imageURL), mlog.Any("err", err))
-		} else {
+		} else if image != nil {
 			images[imageURL] = image
 		}
 	}
@@ -345,18 +350,34 @@ func (a *App) getLinkMetadata(requestURL string, timestamp int64, isNewPost bool
 		return nil, nil, err
 	}
 
-	request.Header.Add("Accept", "text/html, image/*")
+	var body io.ReadCloser
+	var contentType string
 
-	client := a.HTTPService.MakeClient(false)
-	client.Timeout = time.Duration(*a.Config().ExperimentalSettings.LinkMetadataTimeoutMilliseconds) * time.Millisecond
+	if (request.URL.Scheme+"://"+request.URL.Host) == a.GetSiteURL() && request.URL.Path == "/api/v4/image" {
+		// /api/v4/image requires authentication, so bypass the API by hitting the proxy directly
+		body, contentType, err = a.ImageProxy.GetImageDirect(a.ImageProxy.GetUnproxiedImageURL(request.URL.String()))
+	} else {
+		request.Header.Add("Accept", "image/*, text/html")
 
-	res, err := client.Do(request)
+		client := a.HTTPService.MakeClient(false)
+		client.Timeout = time.Duration(*a.Config().ExperimentalSettings.LinkMetadataTimeoutMilliseconds) * time.Millisecond
+
+		var res *http.Response
+		res, err = client.Do(request)
+
+		if res != nil {
+			body = res.Body
+			contentType = res.Header.Get("Content-Type")
+		}
+	}
+
+	if body != nil {
+		defer body.Close()
+	}
 
 	if err == nil {
-		defer res.Body.Close()
-
 		// Parse the data
-		og, image, err = a.parseLinkMetadata(requestURL, res.Body, res.Header.Get("Content-Type"))
+		og, image, err = a.parseLinkMetadata(requestURL, body, contentType)
 	}
 
 	// Write back to cache and database, even if there was an error and the results are nil
@@ -451,7 +472,7 @@ func cacheLinkMetadata(requestURL string, timestamp int64, og *opengraph.OpenGra
 
 func (a *App) parseLinkMetadata(requestURL string, body io.Reader, contentType string) (*opengraph.OpenGraph, *model.PostImage, error) {
 	if strings.HasPrefix(contentType, "image") {
-		image, err := parseImages(body)
+		image, err := parseImages(io.LimitReader(body, MaxMetadataImageSize))
 		return nil, image, err
 	} else if strings.HasPrefix(contentType, "text/html") {
 		og := a.ParseOpenGraphMetadata(requestURL, body, contentType)
@@ -470,7 +491,12 @@ func (a *App) parseLinkMetadata(requestURL string, body io.Reader, contentType s
 }
 
 func parseImages(body io.Reader) (*model.PostImage, error) {
-	config, _, err := image.DecodeConfig(body)
+	// Store any data that is read for the config for any further processing
+	buf := &bytes.Buffer{}
+	t := io.TeeReader(body, buf)
+
+	// Read the image config to get the format and dimensions
+	config, format, err := image.DecodeConfig(t)
 	if err != nil {
 		return nil, err
 	}
@@ -478,6 +504,17 @@ func parseImages(body io.Reader) (*model.PostImage, error) {
 	image := &model.PostImage{
 		Width:  config.Width,
 		Height: config.Height,
+		Format: format,
+	}
+
+	if format == "gif" {
+		// Decoding the config may have read some of the image data, so re-read the data that has already been read first
+		frameCount, err := imgutils.CountFrames(io.MultiReader(buf, body))
+		if err != nil {
+			return nil, err
+		}
+
+		image.FrameCount = frameCount
 	}
 
 	return image, nil

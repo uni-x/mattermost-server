@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
 )
 
 const (
@@ -69,6 +69,51 @@ func (ps SqlPluginStore) SaveOrUpdate(kv *model.PluginKeyValue) store.StoreChann
 
 		result.Data = kv
 	})
+}
+
+func (ps SqlPluginStore) CompareAndSet(kv *model.PluginKeyValue, oldValue []byte) (bool, *model.AppError) {
+	if err := kv.IsValid(); err != nil {
+		return false, err
+	}
+
+	if oldValue == nil {
+		// Insert if oldValue is nil
+		if err := ps.GetMaster().Insert(kv); err != nil {
+			// If the error is from unique constraints violation, it's the result of a
+			// race condition, return false and no error. Otherwise we have a real error and
+			// need to return it.
+			if IsUniqueConstraintError(err, []string{"PRIMARY", "PluginId", "Key", "PKey"}) {
+				return false, nil
+			} else {
+				return false, model.NewAppError("SqlPluginStore.CompareAndSet", "store.sql_plugin_store.save.app_error", nil, err.Error(), http.StatusInternalServerError)
+			}
+		}
+	} else {
+		// Update if oldValue is not nil
+		updateResult, err := ps.GetMaster().Exec(
+			`UPDATE PluginKeyValueStore SET PValue = :New WHERE PluginId = :PluginId AND PKey = :Key AND PValue = :Old`,
+			map[string]interface{}{
+				"PluginId": kv.PluginId,
+				"Key":      kv.Key,
+				"Old":      oldValue,
+				"New":      kv.Value,
+			},
+		)
+		if err != nil {
+			return false, model.NewAppError("SqlPluginStore.CompareAndSet", "store.sql_plugin_store.save.app_error", nil, err.Error(), http.StatusInternalServerError)
+		}
+
+		if rowsAffected, err := updateResult.RowsAffected(); err != nil {
+			// Failed to update
+			return false, model.NewAppError("SqlPluginStore.CompareAndSet", "store.sql_plugin_store.save.app_error", nil, err.Error(), http.StatusInternalServerError)
+		} else if rowsAffected == 0 {
+			// No rows were affected by the update, where condition was not satisfied,
+			// return false, but no error.
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (ps SqlPluginStore) Get(pluginId, key string) store.StoreChannel {

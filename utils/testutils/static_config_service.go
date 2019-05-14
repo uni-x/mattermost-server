@@ -6,7 +6,7 @@ package testutils
 import (
 	"crypto/ecdsa"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 type StaticConfigService struct {
@@ -27,4 +27,7 @@ func (StaticConfigService) RemoveConfigListener(string) {
 
 func (StaticConfigService) AsymmetricSigningKey() *ecdsa.PrivateKey {
 	return &ecdsa.PrivateKey{}
+}
+func (StaticConfigService) PostActionCookieSecret() []byte {
+	return make([]byte, 32)
 }

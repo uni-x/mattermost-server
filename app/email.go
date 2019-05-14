@@ -9,15 +9,15 @@ import (
 
 	"net/http"
 
-	"github.com/nicksnyder/go-i18n/i18n"
+	"github.com/mattermost/go-i18n/i18n"
 	"github.com/pkg/errors"
 	"github.com/throttled/throttled"
 	"github.com/throttled/throttled/store/memstore"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/services/mailservice"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/services/mailservice"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const (
@@ -180,7 +180,7 @@ func (a *App) SendWelcomeEmail(userId string, email string, verified bool, local
 	}
 
 	if !verified {
-		token, err := a.CreateVerifyEmailToken(userId)
+		token, err := a.CreateVerifyEmailToken(userId, email)
 		if err != nil {
 			return err
 		}

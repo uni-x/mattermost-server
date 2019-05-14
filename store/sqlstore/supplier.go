@@ -15,15 +15,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/dyatlov/go-opengraph/opengraph"
 	"github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
 	"github.com/mattermost/gorp"
-	"github.com/uni-x/mattermost-server/einterfaces"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/einterfaces"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 const (
@@ -71,6 +72,7 @@ type SqlSupplierOldStores struct {
 	channel              store.ChannelStore
 	post                 store.PostStore
 	user                 store.UserStore
+	bot                  store.BotStore
 	audit                store.AuditStore
 	cluster              store.ClusterDiscoveryStore
 	compliance           store.ComplianceStore
@@ -83,7 +85,6 @@ type SqlSupplierOldStores struct {
 	preference           store.PreferenceStore
 	license              store.LicenseStore
 	token                store.TokenStore
-	apiToken             store.ApiTokenStore
 	emoji                store.EmojiStore
 	status               store.StatusStore
 	fileInfo             store.FileInfoStore
@@ -98,11 +99,12 @@ type SqlSupplierOldStores struct {
 	group                store.GroupStore
 	UserTermsOfService   store.UserTermsOfServiceStore
 	linkMetadata         store.LinkMetadataStore
+	notificationRegistry store.NotificationRegistryStore
 }
 
 type SqlSupplier struct {
 	// rrCounter and srCounter should be kept first.
-	// See https://github.com/uni-x/mattermost-server/pull/7281
+	// See https://github.com/mattermost/mattermost-server/pull/7281
 	rrCounter      int64
 	srCounter      int64
 	next           store.LayeredStoreSupplier
@@ -123,10 +125,11 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 
 	supplier.initConnection()
 
-	supplier.oldStores.team = NewSqlTeamStore(supplier)
+	supplier.oldStores.team = NewSqlTeamStore(supplier, metrics)
 	supplier.oldStores.channel = NewSqlChannelStore(supplier, metrics)
 	supplier.oldStores.post = NewSqlPostStore(supplier, metrics)
 	supplier.oldStores.user = NewSqlUserStore(supplier, metrics)
+	supplier.oldStores.bot = NewSqlBotStore(supplier, metrics)
 	supplier.oldStores.audit = NewSqlAuditStore(supplier)
 	supplier.oldStores.cluster = NewSqlClusterDiscoveryStore(supplier)
 	supplier.oldStores.compliance = NewSqlComplianceStore(supplier)
@@ -139,7 +142,6 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 	supplier.oldStores.preference = NewSqlPreferenceStore(supplier)
 	supplier.oldStores.license = NewSqlLicenseStore(supplier)
 	supplier.oldStores.token = NewSqlTokenStore(supplier)
-	supplier.oldStores.apiToken = NewSqlApiTokenStore(supplier)
 	supplier.oldStores.emoji = NewSqlEmojiStore(supplier, metrics)
 	supplier.oldStores.status = NewSqlStatusStore(supplier)
 	supplier.oldStores.fileInfo = NewSqlFileInfoStore(supplier, metrics)
@@ -150,6 +152,7 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 	supplier.oldStores.TermsOfService = NewSqlTermsOfServiceStore(supplier, metrics)
 	supplier.oldStores.UserTermsOfService = NewSqlUserTermsOfServiceStore(supplier)
 	supplier.oldStores.linkMetadata = NewSqlLinkMetadataStore(supplier)
+	supplier.oldStores.notificationRegistry = NewSqlNotificationRegistryStore(supplier)
 
 	initSqlSupplierReactions(supplier)
 	initSqlSupplierRoles(supplier)
@@ -163,12 +166,18 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 		os.Exit(EXIT_CREATE_TABLE)
 	}
 
-	UpgradeDatabase(supplier)
+	err = UpgradeDatabase(supplier, model.CurrentVersion)
+	if err != nil {
+		mlog.Critical("Failed to upgrade database", mlog.Err(err))
+		time.Sleep(time.Second)
+		os.Exit(EXIT_GENERIC_FAILURE)
+	}
 
 	supplier.oldStores.team.(*SqlTeamStore).CreateIndexesIfNotExists()
 	supplier.oldStores.channel.(*SqlChannelStore).CreateIndexesIfNotExists()
 	supplier.oldStores.post.(*SqlPostStore).CreateIndexesIfNotExists()
 	supplier.oldStores.user.(*SqlUserStore).CreateIndexesIfNotExists()
+	supplier.oldStores.bot.(*SqlBotStore).CreateIndexesIfNotExists()
 	supplier.oldStores.audit.(*SqlAuditStore).CreateIndexesIfNotExists()
 	supplier.oldStores.compliance.(*SqlComplianceStore).CreateIndexesIfNotExists()
 	supplier.oldStores.session.(*SqlSessionStore).CreateIndexesIfNotExists()
@@ -180,7 +189,6 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 	supplier.oldStores.preference.(*SqlPreferenceStore).CreateIndexesIfNotExists()
 	supplier.oldStores.license.(*SqlLicenseStore).CreateIndexesIfNotExists()
 	supplier.oldStores.token.(*SqlTokenStore).CreateIndexesIfNotExists()
-	supplier.oldStores.apiToken.(*SqlApiTokenStore).CreateIndexesIfNotExists()
 	supplier.oldStores.emoji.(*SqlEmojiStore).CreateIndexesIfNotExists()
 	supplier.oldStores.status.(*SqlStatusStore).CreateIndexesIfNotExists()
 	supplier.oldStores.fileInfo.(*SqlFileInfoStore).CreateIndexesIfNotExists()
@@ -939,6 +947,10 @@ func (ss *SqlSupplier) User() store.UserStore {
 	return ss.oldStores.user
 }
 
+func (ss *SqlSupplier) Bot() store.BotStore {
+	return ss.oldStores.bot
+}
+
 func (ss *SqlSupplier) Session() store.SessionStore {
 	return ss.oldStores.session
 }
@@ -985,10 +997,6 @@ func (ss *SqlSupplier) License() store.LicenseStore {
 
 func (ss *SqlSupplier) Token() store.TokenStore {
 	return ss.oldStores.token
-}
-
-func (ss *SqlSupplier) ApiToken() store.ApiTokenStore {
-	return ss.oldStores.apiToken
 }
 
 func (ss *SqlSupplier) Emoji() store.EmojiStore {
@@ -1047,8 +1055,20 @@ func (ss *SqlSupplier) LinkMetadata() store.LinkMetadataStore {
 	return ss.oldStores.linkMetadata
 }
 
+func (ss *SqlSupplier) NotificationRegistry() store.NotificationRegistryStore {
+	return ss.oldStores.notificationRegistry
+}
+
 func (ss *SqlSupplier) DropAllTables() {
 	ss.master.TruncateTables()
+}
+
+func (ss *SqlSupplier) getQueryBuilder() sq.StatementBuilderType {
+	builder := sq.StatementBuilder.PlaceholderFormat(sq.Question)
+	if ss.DriverName() == model.DATABASE_DRIVER_POSTGRES {
+		builder = builder.PlaceholderFormat(sq.Dollar)
+	}
+	return builder
 }
 
 type mattermConverter struct{}

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/uni-x/mattermost-server/utils/markdown"
+	"github.com/mattermost/mattermost-server/utils/markdown"
 )
 
 const (
@@ -36,7 +36,6 @@ const (
 	POST_CONVERT_CHANNEL        = "system_convert_channel"
 	POST_PURPOSE_CHANGE         = "system_purpose_change"
 	POST_CHANNEL_DELETED        = "system_channel_deleted"
-	POST_CHANNEL_RESTORED       = "system_channel_restored"
 	POST_EPHEMERAL              = "system_ephemeral"
 	POST_CHANGE_CHANNEL_PRIVACY = "system_change_chan_privacy"
 	POST_FILEIDS_MAX_RUNES      = 150
@@ -85,7 +84,6 @@ type Post struct {
 	Metadata *PostMetadata `json:"metadata,omitempty" db:"-"`
 }
 
-
 type PostEphemeral struct {
 	UserID string `json:"user_id"`
 	Post   *Post  `json:"post"`
@@ -122,6 +120,12 @@ type PostForExport struct {
 	ChannelName string
 	Username    string
 	ReplyCount  int
+}
+
+type DirectPostForExport struct {
+	Post
+	User           string
+	ChannelMembers *[]string
 }
 
 type ReplyForExport struct {
@@ -230,7 +234,6 @@ func (o *Post) IsValid(maxPostSize int) *AppError {
 		POST_DISPLAYNAME_CHANGE,
 		POST_CONVERT_CHANNEL,
 		POST_CHANNEL_DELETED,
-		POST_CHANNEL_RESTORED,
 		POST_CHANGE_CHANNEL_PRIVACY:
 	default:
 		if !strings.HasPrefix(o.Type, POST_CUSTOM_TYPE_PREFIX) {
@@ -398,6 +401,23 @@ func (o *Post) Attachments() []*SlackAttachment {
 		}
 	}
 	return ret
+}
+
+func (o *Post) AttachmentsEqual(input *Post) bool {
+	attachments := o.Attachments()
+	inputAttachments := input.Attachments()
+
+	if len(attachments) != len(inputAttachments) {
+		return false
+	}
+
+	for i := range attachments {
+		if !attachments[i].Equals(inputAttachments[i]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 var markdownDestinationEscaper = strings.NewReplacer(

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 const (
@@ -21,43 +21,50 @@ const (
 )
 
 type Params struct {
-	UserId         string
-	TeamId         string
-	InviteId       string
-	TokenId        string
-	ChannelId      string
-	PostId         string
-	FileId         string
-	Filename       string
-	PluginId       string
-	CommandId      string
-	HookId         string
-	ReportId       string
-	EmojiId        string
-	AppId          string
-	Email          string
-	Username       string
-	TeamName       string
-	ChannelName    string
-	PreferenceName string
-	EmojiName      string
-	Category       string
-	Service        string
-	JobId          string
-	JobType        string
-	ActionId       string
-	RoleId         string
-	RoleName       string
-	SchemeId       string
-	Scope          string
-	GroupId        string
-	Page           int
-	PerPage        int
-	LogsPerPage    int
-	Permanent      bool
-	RemoteId       string
-	SyncableId     string
-	SyncableType   model.GroupSyncableType
+	UserId              string
+	TeamId              string
+	InviteId            string
+	TokenId             string
+	ChannelId           string
+	PostId              string
+	FileId              string
+	Filename            string
+	PluginId            string
+	CommandId           string
+	HookId              string
+	ReportId            string
+	EmojiId             string
+	AppId               string
+	Email               string
+	Username            string
+	TeamName            string
+	ChannelName         string
+	PreferenceName      string
+	EmojiName           string
+	Category            string
+	Service             string
+	JobId               string
+	JobType             string
+	ActionId            string
+	RoleId              string
+	RoleName            string
+	SchemeId            string
+	Scope               string
+	GroupId             string
+	Page                int
+	PerPage             int
+	LogsPerPage         int
+	Permanent           bool
+	RemoteId            string
+	SyncableId          string
+	SyncableType        model.GroupSyncableType
+	BotUserId           string
+	Q                   string
+	IsLinked            *bool
+	IsConfigured        *bool
+	NotAssociatedToTeam string
+	Paginate            *bool
+	IncludeMemberCount  bool
 }
 
 func ParamsFromRequest(r *http.Request) *Params {
@@ -226,5 +233,30 @@ func ParamsFromRequest(r *http.Request) *Params {
 			params.SyncableType = model.GroupSyncableTypeChannel
 		}
 	}
+
+	if val, ok := props["bot_user_id"]; ok {
+		params.BotUserId = val
+	}
+
+	params.Q = query.Get("q")
+
+	if val, err := strconv.ParseBool(query.Get("is_linked")); err == nil {
+		params.IsLinked = &val
+	}
+
+	if val, err := strconv.ParseBool(query.Get("is_configured")); err == nil {
+		params.IsConfigured = &val
+	}
+
+	params.NotAssociatedToTeam = query.Get("not_associated_to_team")
+
+	if val, err := strconv.ParseBool(query.Get("paginate")); err == nil {
+		params.Paginate = &val
+	}
+
+	if val, err := strconv.ParseBool(query.Get("include_member_count")); err == nil {
+		params.IncludeMemberCount = val
+	}
+
 	return params
 }

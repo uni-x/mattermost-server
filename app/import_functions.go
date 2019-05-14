@@ -11,10 +11,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/store"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 //
@@ -68,6 +68,16 @@ func (a *App) ImportScheme(data *SchemeImportData, dryRun bool) *model.AppError 
 		if err := a.ImportRole(data.DefaultTeamUserRole, dryRun, true); err != nil {
 			return err
 		}
+
+		if data.DefaultTeamGuestRole == nil {
+			data.DefaultTeamGuestRole = &RoleImportData{
+				DisplayName: model.NewString("Team Guest Role for Scheme"),
+			}
+		}
+		data.DefaultTeamGuestRole.Name = &scheme.DefaultTeamGuestRole
+		if err := a.ImportRole(data.DefaultTeamGuestRole, dryRun, true); err != nil {
+			return err
+		}
 	}
 
 	if scheme.Scope == model.SCHEME_SCOPE_TEAM || scheme.Scope == model.SCHEME_SCOPE_CHANNEL {
@@ -78,6 +88,16 @@ func (a *App) ImportScheme(data *SchemeImportData, dryRun bool) *model.AppError 
 
 		data.DefaultChannelUserRole.Name = &scheme.DefaultChannelUserRole
 		if err := a.ImportRole(data.DefaultChannelUserRole, dryRun, true); err != nil {
+			return err
+		}
+
+		if data.DefaultChannelGuestRole == nil {
+			data.DefaultChannelGuestRole = &RoleImportData{
+				DisplayName: model.NewString("Channel Guest Role for Scheme"),
+			}
+		}
+		data.DefaultChannelGuestRole.Name = &scheme.DefaultChannelGuestRole
+		if err := a.ImportRole(data.DefaultChannelGuestRole, dryRun, true); err != nil {
 			return err
 		}
 	}
@@ -369,6 +389,13 @@ func (a *App) ImportUser(data *UserImportData, dryRun bool) *model.AppError {
 		}
 	}
 
+	if data.DeleteAt != nil {
+		if user.DeleteAt != *data.DeleteAt {
+			user.DeleteAt = *data.DeleteAt
+			hasUserChanged = true
+		}
+	}
+
 	var roles string
 	if data.Roles != nil {
 		if user.Roles != *data.Roles {
@@ -439,6 +466,8 @@ func (a *App) ImportUser(data *UserImportData, dryRun bool) *model.AppError {
 				user.AddNotifyProp(model.MENTION_KEYS_NOTIFY_PROP, *data.NotifyProps.MentionKeys)
 				hasNotifyPropsChanged = true
 			}
+		} else {
+			user.UpdateMentionKeysFromUsername("")
 		}
 	}
 
@@ -477,7 +506,7 @@ func (a *App) ImportUser(data *UserImportData, dryRun bool) *model.AppError {
 		}
 		if emailVerified {
 			if hasUserEmailVerifiedChanged {
-				if err := a.VerifyUserEmail(user.Id); err != nil {
+				if err := a.VerifyUserEmail(user.Id, user.Email); err != nil {
 					return err
 				}
 			}
@@ -638,6 +667,7 @@ func (a *App) ImportUserTeams(user *model.User, data *[]UserTeamImportData) *mod
 		}
 
 		var roles string
+		isSchemeGuest := false
 		isSchemeUser := true
 		isSchemeAdmin := false
 
@@ -647,7 +677,10 @@ func (a *App) ImportUserTeams(user *model.User, data *[]UserTeamImportData) *mod
 			rawRoles := *tdata.Roles
 			explicitRoles := []string{}
 			for _, role := range strings.Fields(rawRoles) {
-				if role == model.TEAM_USER_ROLE_ID {
+				if role == model.TEAM_GUEST_ROLE_ID {
+					isSchemeGuest = true
+					isSchemeUser = false
+				} else if role == model.TEAM_USER_ROLE_ID {
 					isSchemeUser = true
 				} else if role == model.TEAM_ADMIN_ROLE_ID {
 					isSchemeAdmin = true
@@ -669,8 +702,8 @@ func (a *App) ImportUserTeams(user *model.User, data *[]UserTeamImportData) *mod
 			}
 		}
 
-		if member.SchemeAdmin != isSchemeAdmin || member.SchemeUser != isSchemeUser {
-			a.UpdateTeamMemberSchemeRoles(team.Id, user.Id, isSchemeUser, isSchemeAdmin)
+		if member.SchemeAdmin != isSchemeAdmin || member.SchemeUser != isSchemeUser || member.SchemeGuest != isSchemeGuest {
+			a.UpdateTeamMemberSchemeRoles(team.Id, user.Id, isSchemeGuest, isSchemeUser, isSchemeAdmin)
 		}
 
 		defaultChannel, err := a.GetChannelByName(model.DEFAULT_CHANNEL, team.Id, true)
@@ -711,6 +744,7 @@ func (a *App) ImportUserChannels(user *model.User, team *model.Team, teamMember 
 		}
 
 		var roles string
+		isSchemeGuest := false
 		isSchemeUser := true
 		isSchemeAdmin := false
 
@@ -720,7 +754,10 @@ func (a *App) ImportUserChannels(user *model.User, team *model.Team, teamMember 
 			rawRoles := *cdata.Roles
 			explicitRoles := []string{}
 			for _, role := range strings.Fields(rawRoles) {
-				if role == model.CHANNEL_USER_ROLE_ID {
+				if role == model.CHANNEL_GUEST_ROLE_ID {
+					isSchemeGuest = true
+					isSchemeUser = false
+				} else if role == model.CHANNEL_USER_ROLE_ID {
 					isSchemeUser = true
 				} else if role == model.CHANNEL_ADMIN_ROLE_ID {
 					isSchemeAdmin = true
@@ -746,8 +783,8 @@ func (a *App) ImportUserChannels(user *model.User, team *model.Team, teamMember 
 			}
 		}
 
-		if member.SchemeAdmin != isSchemeAdmin || member.SchemeUser != isSchemeUser {
-			a.UpdateChannelMemberSchemeRoles(channel.Id, user.Id, isSchemeUser, isSchemeAdmin)
+		if member.SchemeAdmin != isSchemeAdmin || member.SchemeUser != isSchemeUser || member.SchemeGuest != isSchemeGuest {
+			a.UpdateChannelMemberSchemeRoles(channel.Id, user.Id, isSchemeGuest, isSchemeUser, isSchemeAdmin)
 		}
 
 		if cdata.NotifyProps != nil {
@@ -806,8 +843,8 @@ func (a *App) ImportReaction(data *ReactionImportData, post *model.Post, dryRun 
 		EmojiName: *data.EmojiName,
 		CreateAt:  *data.CreateAt,
 	}
-	if result := <-a.Srv.Store.Reaction().Save(reaction); result.Err != nil {
-		return result.Err
+	if _, err := a.Srv.Store.Reaction().Save(reaction); err != nil {
+		return err
 	}
 	return nil
 }
@@ -872,7 +909,6 @@ func (a *App) ImportReply(data *ReplyImportData, post *model.Post, teamId string
 }
 
 func (a *App) ImportAttachment(data *AttachmentImportData, post *model.Post, teamId string, dryRun bool) (*model.FileInfo, *model.AppError) {
-	fileUploadError := model.NewAppError("BulkImport", "app.import.attachment.file_upload.error", map[string]interface{}{"FilePath": *data.Path}, "", http.StatusBadRequest)
 	file, err := os.Open(*data.Path)
 	if err != nil {
 		return nil, model.NewAppError("BulkImport", "app.import.attachment.bad_file.error", map[string]interface{}{"FilePath": *data.Path}, "", http.StatusBadRequest)
@@ -885,8 +921,8 @@ func (a *App) ImportAttachment(data *AttachmentImportData, post *model.Post, tea
 		fileInfo, err := a.DoUploadFile(timestamp, teamId, post.ChannelId, post.UserId, file.Name(), buf.Bytes())
 
 		if err != nil {
-			fmt.Print(err)
-			return nil, fileUploadError
+			mlog.Error(fmt.Sprintf("Failed to upload file: %s", err.Error()))
+			return nil, err
 		}
 
 		a.HandleImages([]string{fileInfo.PreviewPath}, []string{fileInfo.ThumbnailPath}, [][]byte{buf.Bytes()})
@@ -894,7 +930,7 @@ func (a *App) ImportAttachment(data *AttachmentImportData, post *model.Post, tea
 		mlog.Info(fmt.Sprintf("uploading file with name %s", file.Name()))
 		return fileInfo, nil
 	}
-	return nil, fileUploadError
+	return nil, model.NewAppError("BulkImport", "app.import.attachment.file_upload.error", map[string]interface{}{"FilePath": *data.Path}, "", http.StatusBadRequest)
 }
 
 func (a *App) ImportPost(data *PostImportData, dryRun bool) *model.AppError {

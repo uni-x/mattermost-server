@@ -6,11 +6,11 @@ package app
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestCheckIfRolesGrantPermission(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	cases := []struct {

@@ -3,15 +3,15 @@ dist: | check-style test package
 
 build-linux:
 	@echo Build Linux amd64
-	env GOOS=linux GOARCH=amd64 $(GO) install -i $(GOFLAGS) $(GO_LINKER_FLAGS) ./...
+	env GOOS=linux GOARCH=amd64 $(GO) install -i $(GOFLAGS) -ldflags '$(LDFLAGS)' ./...
 
 build-osx:
 	@echo Build OSX amd64
-	env GOOS=darwin GOARCH=amd64 $(GO) install -i $(GOFLAGS) $(GO_LINKER_FLAGS) ./...
+	env GOOS=darwin GOARCH=amd64 $(GO) install -i $(GOFLAGS) -ldflags '$(LDFLAGS)' ./...
 
 build-windows:
 	@echo Build Windows amd64
-	env GOOS=windows GOARCH=amd64 $(GO) install -i $(GOFLAGS) $(GO_LINKER_FLAGS) ./...
+	env GOOS=windows GOARCH=amd64 $(GO) install -i $(GOFLAGS) -ldflags '$(LDFLAGS)' ./...
 
 build: build-linux build-windows build-osx
 
@@ -32,7 +32,9 @@ package:
 	mkdir -p $(DIST_PATH)/prepackaged_plugins
 
 	@# Resource directories
-	cp -RL config $(DIST_PATH)
+	mkdir -p $(DIST_PATH)/config
+	cp -L config/README.md $(DIST_PATH)/config
+	cp -L config/config.json $(DIST_PATH)/config
 	cp -RL fonts $(DIST_PATH)
 	cp -RL templates $(DIST_PATH)
 	cp -RL i18n $(DIST_PATH)
@@ -44,6 +46,7 @@ package:
 	@# Reset email sending to original configuration
 	sed -i'' -e 's|"SendEmailNotifications": true,|"SendEmailNotifications": false,|g' $(DIST_PATH)/config/config.json
 	sed -i'' -e 's|"FeedbackEmail": "test@example.com",|"FeedbackEmail": "",|g' $(DIST_PATH)/config/config.json
+	sed -i'' -e 's|"ReplyToAddress": "test@example.com",|"ReplyToAddress": "",|g' $(DIST_PATH)/config/config.json
 	sed -i'' -e 's|"SMTPServer": "dockerhost",|"SMTPServer": "",|g' $(DIST_PATH)/config/config.json
 	sed -i'' -e 's|"SMTPPort": "2500",|"SMTPPort": "",|g' $(DIST_PATH)/config/config.json
 
@@ -62,7 +65,7 @@ endif
 
 	@# Download prepackaged plugins
 	@for plugin_package in $(PLUGIN_PACKAGES) ; do \
-		curl -s https://api.github.com/repos/mattermost/$$plugin_package/releases/latest | grep browser_download_url | cut -d '"' -f 4 | wget -qi - -P  $(DIST_PATH)/prepackaged_plugins/ ;\
+		curl -s https://api.github.com/repos/mattermost/$$plugin_package/releases/latest | awk -F\" '/browser_download_url/ { system("cd $(DIST_PATH)/prepackaged_plugins; curl -OL " $$4) }';\
 	done
 
 	@# ----- PLATFORM SPECIFIC -----

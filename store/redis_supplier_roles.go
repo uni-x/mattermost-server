@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func (s *RedisSupplier) RoleSave(ctx context.Context, role *model.Role, hints ...LayeredStoreHint) *LayeredStoreSupplierResult {
@@ -27,6 +27,12 @@ func (s *RedisSupplier) RoleGet(ctx context.Context, roleId string, hints ...Lay
 	// Roles are cached by name, as that is most commonly how they are looked up.
 	// This means that no caching is supported on roles being looked up by ID.
 	return s.Next().RoleGet(ctx, roleId, hints...)
+}
+
+func (s *RedisSupplier) RoleGetAll(ctx context.Context, hints ...LayeredStoreHint) *LayeredStoreSupplierResult {
+	// Roles are cached by name, as that is most commonly how they are looked up.
+	// This means that no caching is supported on roles being listed.
+	return s.Next().RoleGetAll(ctx, hints...)
 }
 
 func (s *RedisSupplier) RoleGetByName(ctx context.Context, name string, hints ...LayeredStoreHint) *LayeredStoreSupplierResult {

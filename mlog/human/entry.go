@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/mlog"
 )
 
 type LogEntry struct {

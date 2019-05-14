@@ -8,8 +8,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 // Default polling interval for jobs termination.
@@ -111,6 +111,13 @@ func (watcher *Watcher) PollAndNotify() {
 				if watcher.workers.Migrations != nil {
 					select {
 					case watcher.workers.Migrations.JobChannel() <- *job:
+					default:
+					}
+				}
+			} else if job.Type == model.JOB_TYPE_PLUGINS {
+				if watcher.workers.Plugins != nil {
+					select {
+					case watcher.workers.Plugins.JobChannel() <- *job:
 					default:
 					}
 				}

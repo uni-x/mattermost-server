@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func validateSchemeImportData(data *SchemeImportData) *model.AppError {
@@ -56,6 +56,12 @@ func validateSchemeImportData(data *SchemeImportData) *model.AppError {
 		}
 	}
 
+	if data.DefaultTeamGuestRole != nil {
+		if err := validateRoleImportData(data.DefaultTeamGuestRole); err != nil {
+			return err
+		}
+	}
+
 	if data.DefaultChannelAdminRole != nil {
 		if err := validateRoleImportData(data.DefaultChannelAdminRole); err != nil {
 			return err
@@ -64,6 +70,12 @@ func validateSchemeImportData(data *SchemeImportData) *model.AppError {
 
 	if data.DefaultChannelUserRole != nil {
 		if err := validateRoleImportData(data.DefaultChannelUserRole); err != nil {
+			return err
+		}
+	}
+
+	if data.DefaultChannelGuestRole != nil {
+		if err := validateRoleImportData(data.DefaultChannelGuestRole); err != nil {
 			return err
 		}
 	}

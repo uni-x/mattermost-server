@@ -20,8 +20,8 @@ import (
 
 	"github.com/dyatlov/go-opengraph/opengraph"
 	plugin "github.com/hashicorp/go-plugin"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 var hookNameToId map[string]int = make(map[string]int)
@@ -197,8 +197,10 @@ func (s *hooksRPCServer) OnActivate(args *Z_OnActivateArgs, returns *Z_OnActivat
 
 	if mmplugin, ok := s.impl.(interface {
 		SetAPI(api API)
+		SetHelpers(helpers Helpers)
 	}); ok {
 		mmplugin.SetAPI(s.apiRPCClient)
+		mmplugin.SetHelpers(&HelpersImpl{API: s.apiRPCClient})
 	}
 
 	if mmplugin, ok := s.impl.(interface {

@@ -8,11 +8,11 @@ import (
 
 	"time"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestClusterDiscoveryService(t *testing.T) {
-	th := Setup()
+	th := Setup(t)
 	defer th.TearDown()
 
 	ds := th.App.NewClusterDiscoveryService()

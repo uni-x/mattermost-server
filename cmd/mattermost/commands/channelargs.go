@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/uni-x/mattermost-server/app"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 const CHANNEL_ARG_SEPARATOR = ":"
@@ -51,8 +51,8 @@ func getChannelFromChannelArg(a *app.App, channelArg string) *model.Channel {
 	}
 
 	if channel == nil {
-		if result := <-a.Srv.Store.Channel().Get(channelPart, true); result.Err == nil {
-			channel = result.Data.(*model.Channel)
+		if ch, errCh := a.Srv.Store.Channel().Get(channelPart, true); errCh == nil {
+			channel = ch
 		}
 	}
 

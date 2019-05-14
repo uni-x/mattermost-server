@@ -17,9 +17,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/api4"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/testlib"
+	"github.com/mattermost/mattermost-server/api4"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/testlib"
 )
 
 var coverprofileCounters map[string]int = make(map[string]int)
@@ -80,7 +80,7 @@ func (h *testHelper) ConfigPath() string {
 
 // SetConfig replaces the configuration passed to a running command.
 func (h *testHelper) SetConfig(config *model.Config) {
-	config.SqlSettings = *mainHelper.Settings
+	config.SqlSettings = *mainHelper.GetSqlSettings()
 	h.config = config
 
 	if err := ioutil.WriteFile(h.configFilePath, []byte(config.ToJson()), 0600); err != nil {

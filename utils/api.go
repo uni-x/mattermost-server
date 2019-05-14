@@ -14,7 +14,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func CheckOrigin(r *http.Request, allowedOrigins string) bool {

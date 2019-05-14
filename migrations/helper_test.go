@@ -4,16 +4,14 @@
 package migrations
 
 import (
-	"io"
-	"io/ioutil"
 	"os"
 	"time"
 
-	"github.com/uni-x/mattermost-server/app"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/utils"
-	"github.com/uni-x/mattermost-server/utils/fileutils"
+	"github.com/mattermost/mattermost-server/app"
+	"github.com/mattermost/mattermost-server/config"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 type TestHelper struct {
@@ -27,29 +25,20 @@ type TestHelper struct {
 
 	SystemAdminUser *model.User
 
-	tempConfigPath string
-	tempWorkspace  string
+	tempWorkspace string
 }
 
 func setupTestHelper(enterprise bool) *TestHelper {
-	mainHelper.Store.DropAllTables()
+	store := mainHelper.GetStore()
+	store.DropAllTables()
 
-	permConfig, err := os.Open(fileutils.FindConfigFile("config.json"))
+	memoryStore, err := config.NewMemoryStore()
 	if err != nil {
-		panic(err)
-	}
-	defer permConfig.Close()
-	tempConfig, err := ioutil.TempFile("", "")
-	if err != nil {
-		panic(err)
-	}
-	_, err = io.Copy(tempConfig, permConfig)
-	tempConfig.Close()
-	if err != nil {
-		panic(err)
+		panic("failed to initialize memory store: " + err.Error())
 	}
 
-	options := []app.Option{app.ConfigFile(tempConfig.Name()), app.DisableConfigWatch}
+	var options []app.Option
+	options = append(options, app.ConfigStore(memoryStore))
 	options = append(options, app.StoreOverride(mainHelper.Store))
 
 	s, err := app.NewServer(options...)
@@ -58,9 +47,8 @@ func setupTestHelper(enterprise bool) *TestHelper {
 	}
 
 	th := &TestHelper{
-		App:            s.FakeApp(),
-		Server:         s,
-		tempConfigPath: tempConfig.Name(),
+		App:    s.FakeApp(),
+		Server: s,
 	}
 
 	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.MaxUsersPerTeam = 50 })
@@ -75,8 +63,7 @@ func setupTestHelper(enterprise bool) *TestHelper {
 
 	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.ServiceSettings.ListenAddress = prevListenAddress })
 
-	th.App.DoAdvancedPermissionsMigration()
-	th.App.DoEmojisPermissionsMigration()
+	th.App.DoAppMigrations()
 
 	th.App.Srv.Store.MarkSystemRanUnitTests()
 
@@ -258,7 +245,6 @@ func (me *TestHelper) AddUserToChannel(user *model.User, channel *model.Channel)
 
 func (me *TestHelper) TearDown() {
 	me.Server.Shutdown()
-	os.Remove(me.tempConfigPath)
 	if err := recover(); err != nil {
 		panic(err)
 	}
@@ -268,13 +254,14 @@ func (me *TestHelper) TearDown() {
 }
 
 func (me *TestHelper) ResetRoleMigration() {
-	if _, err := mainHelper.SqlSupplier.GetMaster().Exec("DELETE from Roles"); err != nil {
+	sqlSupplier := mainHelper.GetSqlSupplier()
+	if _, err := sqlSupplier.GetMaster().Exec("DELETE from Roles"); err != nil {
 		panic(err)
 	}
 
-	mainHelper.ClusterInterface.SendClearRoleCacheMessage()
+	mainHelper.GetClusterInterface().SendClearRoleCacheMessage()
 
-	if _, err := mainHelper.SqlSupplier.GetMaster().Exec("DELETE from Systems where Name = :Name", map[string]interface{}{"Name": app.ADVANCED_PERMISSIONS_MIGRATION_KEY}); err != nil {
+	if _, err := sqlSupplier.GetMaster().Exec("DELETE from Systems where Name = :Name", map[string]interface{}{"Name": app.ADVANCED_PERMISSIONS_MIGRATION_KEY}); err != nil {
 		panic(err)
 	}
 }

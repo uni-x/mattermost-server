@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nicksnyder/go-i18n/i18n"
-	"github.com/nicksnyder/go-i18n/i18n/bundle"
-	"github.com/nicksnyder/go-i18n/i18n/language"
-	"github.com/nicksnyder/go-i18n/i18n/translation"
+	"github.com/mattermost/go-i18n/i18n"
+	"github.com/mattermost/go-i18n/i18n/bundle"
+	"github.com/mattermost/go-i18n/i18n/language"
+	"github.com/mattermost/go-i18n/i18n/translation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 var htmlTestTranslationBundle *bundle.Bundle

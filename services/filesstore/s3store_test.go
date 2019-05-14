@@ -6,7 +6,7 @@ package filesstore
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 func TestCheckMandatoryS3Fields(t *testing.T) {

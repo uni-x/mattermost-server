@@ -6,12 +6,12 @@ package app
 import (
 	"testing"
 
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/model"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetGroup(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
 
@@ -25,7 +25,7 @@ func TestGetGroup(t *testing.T) {
 }
 
 func TestGetGroupByRemoteID(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
 
@@ -39,7 +39,7 @@ func TestGetGroupByRemoteID(t *testing.T) {
 }
 
 func TestGetGroupsByType(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	th.CreateGroup()
 	th.CreateGroup()
@@ -55,7 +55,7 @@ func TestGetGroupsByType(t *testing.T) {
 }
 
 func TestCreateGroup(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 
 	id := model.NewId()
@@ -76,7 +76,7 @@ func TestCreateGroup(t *testing.T) {
 }
 
 func TestUpdateGroup(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
 	group.DisplayName = model.NewId()
@@ -87,7 +87,7 @@ func TestUpdateGroup(t *testing.T) {
 }
 
 func TestDeleteGroup(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
 
@@ -101,7 +101,7 @@ func TestDeleteGroup(t *testing.T) {
 }
 
 func TestCreateOrRestoreGroupMember(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
 
@@ -115,7 +115,7 @@ func TestCreateOrRestoreGroupMember(t *testing.T) {
 }
 
 func TestDeleteGroupMember(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
 	groupMember, err := th.App.CreateOrRestoreGroupMember(group.Id, th.BasicUser.Id)
@@ -132,16 +132,10 @@ func TestDeleteGroupMember(t *testing.T) {
 }
 
 func TestCreateGroupSyncable(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
-	groupSyncable := &model.GroupSyncable{
-		GroupId:    group.Id,
-		CanLeave:   true,
-		AutoAdd:    false,
-		SyncableId: th.BasicTeam.Id,
-		Type:       model.GroupSyncableTypeTeam,
-	}
+	groupSyncable := model.NewGroupTeam(group.Id, th.BasicTeam.Id, false)
 
 	gs, err := th.App.CreateGroupSyncable(groupSyncable)
 	require.Nil(t, err)
@@ -153,16 +147,10 @@ func TestCreateGroupSyncable(t *testing.T) {
 }
 
 func TestGetGroupSyncable(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
-	groupSyncable := &model.GroupSyncable{
-		GroupId:    group.Id,
-		CanLeave:   true,
-		AutoAdd:    false,
-		SyncableId: th.BasicTeam.Id,
-		Type:       model.GroupSyncableTypeTeam,
-	}
+	groupSyncable := model.NewGroupTeam(group.Id, th.BasicTeam.Id, false)
 
 	gs, err := th.App.CreateGroupSyncable(groupSyncable)
 	require.Nil(t, err)
@@ -174,18 +162,12 @@ func TestGetGroupSyncable(t *testing.T) {
 }
 
 func TestGetGroupSyncables(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
 
 	// Create a group team
-	groupSyncable := &model.GroupSyncable{
-		GroupId:    group.Id,
-		CanLeave:   true,
-		AutoAdd:    false,
-		SyncableId: th.BasicTeam.Id,
-		Type:       model.GroupSyncableTypeTeam,
-	}
+	groupSyncable := model.NewGroupTeam(group.Id, th.BasicTeam.Id, false)
 
 	gs, err := th.App.CreateGroupSyncable(groupSyncable)
 	require.Nil(t, err)
@@ -198,16 +180,10 @@ func TestGetGroupSyncables(t *testing.T) {
 }
 
 func TestDeleteGroupSyncable(t *testing.T) {
-	th := Setup().InitBasic()
+	th := Setup(t).InitBasic()
 	defer th.TearDown()
 	group := th.CreateGroup()
-	groupChannel := &model.GroupSyncable{
-		GroupId:    group.Id,
-		CanLeave:   true,
-		AutoAdd:    false,
-		SyncableId: th.BasicChannel.Id,
-		Type:       model.GroupSyncableTypeChannel,
-	}
+	groupChannel := model.NewGroupChannel(group.Id, th.BasicChannel.Id, false)
 
 	gs, err := th.App.CreateGroupSyncable(groupChannel)
 	require.Nil(t, err)
@@ -220,4 +196,66 @@ func TestDeleteGroupSyncable(t *testing.T) {
 	gs, err = th.App.DeleteGroupSyncable(group.Id, th.BasicChannel.Id, model.GroupSyncableTypeChannel)
 	require.NotNil(t, err)
 	require.Nil(t, gs)
+}
+
+func TestGetGroupsByChannel(t *testing.T) {
+	th := Setup(t).InitBasic()
+	defer th.TearDown()
+	group := th.CreateGroup()
+
+	// Create a group channel
+	groupSyncable := &model.GroupSyncable{
+		GroupId:    group.Id,
+		AutoAdd:    false,
+		SyncableId: th.BasicChannel.Id,
+		Type:       model.GroupSyncableTypeChannel,
+	}
+
+	gs, err := th.App.CreateGroupSyncable(groupSyncable)
+	require.Nil(t, err)
+	require.NotNil(t, gs)
+
+	groups, err := th.App.GetGroupsByChannel(th.BasicChannel.Id, 0, 60)
+	require.Nil(t, err)
+	require.ElementsMatch(t, []*model.Group{group}, groups)
+
+	groups, err = th.App.GetGroupsByChannel(model.NewId(), 0, 60)
+	require.Nil(t, err)
+	require.Empty(t, groups)
+}
+
+func TestGetGroupsByTeam(t *testing.T) {
+	th := Setup(t).InitBasic()
+	defer th.TearDown()
+	group := th.CreateGroup()
+
+	// Create a group team
+	groupSyncable := &model.GroupSyncable{
+		GroupId:    group.Id,
+		AutoAdd:    false,
+		SyncableId: th.BasicTeam.Id,
+		Type:       model.GroupSyncableTypeTeam,
+	}
+
+	gs, err := th.App.CreateGroupSyncable(groupSyncable)
+	require.Nil(t, err)
+	require.NotNil(t, gs)
+
+	groups, _, err := th.App.GetGroupsByTeam(th.BasicTeam.Id, model.GroupSearchOpts{})
+	require.Nil(t, err)
+	require.ElementsMatch(t, []*model.Group{group}, groups)
+
+	groups, _, err = th.App.GetGroupsByTeam(model.NewId(), model.GroupSearchOpts{})
+	require.Nil(t, err)
+	require.Empty(t, groups)
+}
+
+func TestGetGroups(t *testing.T) {
+	th := Setup(t).InitBasic()
+	defer th.TearDown()
+	group := th.CreateGroup()
+
+	groups, err := th.App.GetGroups(0, 60, model.GroupSearchOpts{})
+	require.Nil(t, err)
+	require.ElementsMatch(t, []*model.Group{group}, groups)
 }

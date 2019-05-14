@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
 )
 
 var randomJPEG []byte
@@ -57,7 +57,7 @@ func prepareTestImages(tb testing.TB) {
 
 func BenchmarkUploadFile(b *testing.B) {
 	prepareTestImages(b)
-	th := Setup().InitBasic()
+	th := Setup(b).InitBasic()
 	defer th.TearDown()
 	// disable logging in the benchmark, as best we can
 	th.App.Log.SetConsoleLevel(mlog.LevelError)

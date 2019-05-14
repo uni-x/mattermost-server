@@ -4,18 +4,20 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"bytes"
 	"io/ioutil"
 
 	"github.com/gorilla/mux"
-	"github.com/uni-x/mattermost-server/mlog"
-	"github.com/uni-x/mattermost-server/model"
-	"github.com/uni-x/mattermost-server/plugin"
-	"github.com/uni-x/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/plugin"
+	"github.com/mattermost/mattermost-server/utils"
 )
 
 func (a *App) ServePluginRequest(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +40,34 @@ func (a *App) ServePluginRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.servePluginRequest(w, r, hooks.ServeHTTP)
+}
+
+// ServePluginPublicRequest serves public plugin files
+// at the URL http(s)://$SITE_URL/plugins/$PLUGIN_ID/public/{anything}
+func (a *App) ServePluginPublicRequest(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Should be in the form of /$PLUGIN_ID/public/{anything} by the time we get here
+	vars := mux.Vars(r)
+	pluginID := vars["plugin_id"]
+
+	publicFilesPath, err := a.GetPluginsEnvironment().PublicFilesPath(pluginID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	publicFilePath := path.Clean(r.URL.Path)
+	prefix := fmt.Sprintf("/plugins/%s/public/", pluginID)
+	if !strings.HasPrefix(publicFilePath, prefix) {
+		http.NotFound(w, r)
+		return
+	}
+	publicFile := filepath.Join(publicFilesPath, strings.TrimPrefix(publicFilePath, prefix))
+	http.ServeFile(w, r, publicFile)
 }
 
 func (a *App) servePluginRequest(w http.ResponseWriter, r *http.Request, handler func(*plugin.Context, http.ResponseWriter, *http.Request)) {
@@ -65,21 +95,39 @@ func (a *App) servePluginRequest(w http.ResponseWriter, r *http.Request, handler
 	r.Header.Del("Mattermost-User-Id")
 	if token != "" {
 		session, err := a.GetSession(token)
-		csrfCheckPassed := true
+		csrfCheckPassed := false
 
-		if err == nil && cookieAuth && r.Method != "GET" && r.Header.Get(model.HEADER_REQUESTED_WITH) != model.HEADER_REQUESTED_WITH_XML {
-			bodyBytes, _ := ioutil.ReadAll(r.Body)
-			r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-			r.ParseForm()
-			sentToken := r.FormValue("csrf")
-			expectedToken := session.GetCSRF()
+		if err == nil && cookieAuth && r.Method != "GET" {
+			sentToken := ""
 
-			if sentToken != expectedToken {
-				csrfCheckPassed = false
+			if r.Header.Get(model.HEADER_CSRF_TOKEN) == "" {
+				bodyBytes, _ := ioutil.ReadAll(r.Body)
+				r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+				r.ParseForm()
+				sentToken = r.FormValue("csrf")
+				r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+			} else {
+				sentToken = r.Header.Get(model.HEADER_CSRF_TOKEN)
 			}
 
-			// Set Request Body again, since otherwise form values aren't accessible in plugin handler
-			r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+			expectedToken := session.GetCSRF()
+
+			if sentToken == expectedToken {
+				csrfCheckPassed = true
+			}
+
+			// ToDo(DSchalla) 2019/01/04: Remove after deprecation period and only allow CSRF Header (MM-13657)
+			if r.Header.Get(model.HEADER_REQUESTED_WITH) == model.HEADER_REQUESTED_WITH_XML && !csrfCheckPassed {
+				csrfErrorMessage := "CSRF Check failed for request - Please migrate your plugin to either send a CSRF Header or Form Field, XMLHttpRequest is deprecated"
+				if *a.Config().ServiceSettings.ExperimentalStrictCSRFEnforcement {
+					a.Log.Warn(csrfErrorMessage)
+				} else {
+					a.Log.Debug(csrfErrorMessage)
+					csrfCheckPassed = true
+				}
+			}
+		} else {
+			csrfCheckPassed = true
 		}
 
 		if session != nil && err == nil && csrfCheckPassed {
