@@ -158,11 +158,11 @@ func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*mod
 		return nil, err
 	}
 
+	if channel.Type == model.CHANNEL_OPEN {
+
        result := <-a.Srv.Store.User().GetAll()
        if result.Err != nil {
                return nil, result.Err
-        }
-
        users := result.Data.([]*model.User)
 
        for _, user := range users {
@@ -186,6 +186,33 @@ func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*mod
 		})
 	}
        }
+	}
+	} else {
+
+       user, err := a.Srv.Store.User().Get(userId)
+       if err != nil {
+               return nil, err
+               _, err := a.AddUserToChannel(user, channel)
+               if err != nil {
+                       return nil, err
+               }
+               a.postJoinChannelMessage(user, channel)
+
+	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_CHANNEL_CREATED, "", "", userId, nil)
+	message.Add("channel_id", channel.Id)
+	message.Add("team_id", channel.TeamId)
+	a.Publish(message)
+
+	esInterface := a.Elasticsearch
+	if esInterface != nil && *a.Config().ElasticsearchSettings.EnableIndexing {
+		a.Srv.Go(func() {
+			if err := a.indexUser(user); err != nil {
+				mlog.Error("Encountered error indexing user", mlog.String("user_id", user.Id), mlog.Err(err))
+			}
+		})
+	}
+       }
+	}
 
 	return rchannel, nil
 }
