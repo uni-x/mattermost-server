@@ -158,12 +158,19 @@ func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*mod
 		return nil, err
 	}
 
-	var user *model.User
-	if user, err = a.GetUser(userId); err != nil {
-		return nil, err
-	}
+       result := <-a.Srv.Store.User().GetAll()
+       if result.Err != nil {
+               return nil, result.Err
+        }
 
-	a.postJoinChannelMessage(user, channel)
+       users := result.Data.([]*model.User)
+
+       for _, user := range users {
+               _, err := a.AddUserToChannel(user, channel)
+               if err != nil {
+                       return nil, err
+               }
+               a.postJoinChannelMessage(user, channel)
 
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_CHANNEL_CREATED, "", "", userId, nil)
 	message.Add("channel_id", channel.Id)
@@ -178,6 +185,7 @@ func (a *App) CreateChannelWithUser(channel *model.Channel, userId string) (*mod
 			}
 		})
 	}
+       }
 
 	return rchannel, nil
 }

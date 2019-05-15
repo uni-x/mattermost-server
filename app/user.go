@@ -154,6 +154,19 @@ func (a *App) CreateUserFromSignup(user *model.User) (*model.User, *model.AppErr
 		return nil, err
 	}
 
+       result := <-a.Srv.Store.Team().GetAll()
+       if result.Err != nil {
+               return nil, result.Err
+       }
+       teams := result.Data.([]*model.Team)
+       if len(teams) > 0 {
+               team := teams[0]
+               if err := a.JoinUserToTeam(team, ruser, ""); err != nil {
+                       return nil, err
+               }
+               a.AddDirectChannels(team.Id, ruser)
+       }
+
 	if err := a.SendWelcomeEmail(ruser.Id, ruser.Email, ruser.EmailVerified, ruser.Locale, a.GetSiteURL()); err != nil {
 		mlog.Error(err.Error())
 	}
