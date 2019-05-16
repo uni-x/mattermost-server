@@ -20,10 +20,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/mattermost/mattermost-server/config"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/config"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/utils"
 )
 
 const (

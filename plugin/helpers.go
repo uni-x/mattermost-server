@@ -3,7 +3,7 @@
 
 package plugin
 
-import "github.com/mattermost/mattermost-server/model"
+import "github.com/uni-x/mattermost-server/model"
 
 type Helpers interface {
 	// EnsureBot ether returns an existing bot user or creates a bot user with

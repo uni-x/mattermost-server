@@ -4,11 +4,11 @@
 package app
 
 import (
-	"github.com/mattermost/mattermost-server/einterfaces"
-	ejobs "github.com/mattermost/mattermost-server/einterfaces/jobs"
-	tjobs "github.com/mattermost/mattermost-server/jobs/interfaces"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/einterfaces"
+	ejobs "github.com/uni-x/mattermost-server/einterfaces/jobs"
+	tjobs "github.com/uni-x/mattermost-server/jobs/interfaces"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 var accountMigrationInterface func(*Server) einterfaces.AccountMigrationInterface

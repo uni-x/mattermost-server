@@ -17,7 +17,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 const (

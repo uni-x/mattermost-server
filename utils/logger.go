@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils/fileutils"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/utils/fileutils"
 )
 
 const (

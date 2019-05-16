@@ -3,7 +3,7 @@ package api4
 import (
 	"testing"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/model"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -7,11 +7,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/plugin/plugintest/mock"
-	"github.com/mattermost/mattermost-server/store"
-	"github.com/mattermost/mattermost-server/store/storetest/mocks"
-	"github.com/mattermost/mattermost-server/utils/testutils"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/plugin/plugintest/mock"
+	"github.com/uni-x/mattermost-server/store"
+	"github.com/uni-x/mattermost-server/store/storetest/mocks"
+	"github.com/uni-x/mattermost-server/utils/testutils"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

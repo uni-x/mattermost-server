@@ -6,7 +6,7 @@ package api4
 import (
 	"testing"
 
-	"github.com/mattermost/mattermost-server/testlib"
+	"github.com/uni-x/mattermost-server/testlib"
 )
 
 var mainHelper *testlib.MainHelper

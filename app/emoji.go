@@ -18,8 +18,8 @@ import (
 	"image/color/palette"
 
 	"github.com/disintegration/imaging"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 const (

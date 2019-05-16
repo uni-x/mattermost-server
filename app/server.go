@@ -23,17 +23,17 @@ import (
 	"github.com/throttled/throttled"
 	"golang.org/x/crypto/acme/autocert"
 
-	"github.com/mattermost/mattermost-server/config"
-	"github.com/mattermost/mattermost-server/einterfaces"
-	"github.com/mattermost/mattermost-server/jobs"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/plugin"
-	"github.com/mattermost/mattermost-server/services/httpservice"
-	"github.com/mattermost/mattermost-server/services/imageproxy"
-	"github.com/mattermost/mattermost-server/services/timezones"
-	"github.com/mattermost/mattermost-server/store"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/config"
+	"github.com/uni-x/mattermost-server/einterfaces"
+	"github.com/uni-x/mattermost-server/jobs"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/plugin"
+	"github.com/uni-x/mattermost-server/services/httpservice"
+	"github.com/uni-x/mattermost-server/services/imageproxy"
+	"github.com/uni-x/mattermost-server/services/timezones"
+	"github.com/uni-x/mattermost-server/store"
+	"github.com/uni-x/mattermost-server/utils"
 )
 
 var MaxNotificationsPerChannelDefault int64 = 1000000

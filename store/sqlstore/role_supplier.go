@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/mattermost/gorp"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/store"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/store"
 )
 
 type Role struct {

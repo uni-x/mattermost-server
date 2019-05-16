@@ -20,11 +20,11 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/mattermost/mattermost-server/utils/fileutils"
+	"github.com/uni-x/mattermost-server/utils/fileutils"
 
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/plugin"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/plugin"
+	"github.com/uni-x/mattermost-server/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,7 +65,7 @@ func TestPublicFilesPathConfiguration(t *testing.T) {
 		package main
 
 		import (
-			"github.com/mattermost/mattermost-server/plugin"
+			"github.com/uni-x/mattermost-server/plugin"
 		)
 
 		type MyPlugin struct {
@@ -467,7 +467,7 @@ func TestPluginAPIGetPlugins(t *testing.T) {
     package main
 
     import (
-      "github.com/mattermost/mattermost-server/plugin"
+      "github.com/uni-x/mattermost-server/plugin"
     )
 
     type MyPlugin struct {

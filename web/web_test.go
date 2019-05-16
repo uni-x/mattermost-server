@@ -12,13 +12,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mattermost/mattermost-server/testlib"
+	"github.com/uni-x/mattermost-server/testlib"
 
-	"github.com/mattermost/mattermost-server/app"
-	"github.com/mattermost/mattermost-server/config"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/plugin"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/app"
+	"github.com/uni-x/mattermost-server/config"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/plugin"
+	"github.com/uni-x/mattermost-server/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -146,7 +146,7 @@ func TestPublicFilesRequest(t *testing.T) {
 	package main
 
 	import (
-		"github.com/mattermost/mattermost-server/plugin"
+		"github.com/uni-x/mattermost-server/plugin"
 	)
 
 	type MyPlugin struct {

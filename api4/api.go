@@ -7,10 +7,10 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/mattermost/mattermost-server/app"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/services/configservice"
-	"github.com/mattermost/mattermost-server/web"
+	"github.com/uni-x/mattermost-server/app"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/services/configservice"
+	"github.com/uni-x/mattermost-server/web"
 
 	_ "github.com/mattermost/go-i18n/i18n"
 )

@@ -17,10 +17,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mattermost/mattermost-server/app"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils"
-	"github.com/mattermost/mattermost-server/utils/testutils"
+	"github.com/uni-x/mattermost-server/app"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/utils/testutils"
 )
 
 func TestCreatePost(t *testing.T) {

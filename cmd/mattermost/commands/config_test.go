@@ -5,7 +5,7 @@ package commands
 
 import (
 	"fmt"
-	"github.com/mattermost/mattermost-server/config"
+	"github.com/uni-x/mattermost-server/config"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 type TestConfig struct {

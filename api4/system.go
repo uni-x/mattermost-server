@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"runtime"
 
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/services/filesstore"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/services/filesstore"
+	"github.com/uni-x/mattermost-server/utils"
 )
 
 const REDIRECT_LOCATION_CACHE_SIZE = 10000

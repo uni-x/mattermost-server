@@ -6,8 +6,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/mattermost/mattermost-server/app"
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/app"
+	"github.com/uni-x/mattermost-server/model"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )

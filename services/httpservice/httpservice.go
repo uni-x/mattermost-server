@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattermost/mattermost-server/services/configservice"
+	"github.com/uni-x/mattermost-server/services/configservice"
 )
 
 // HTTPService wraps the functionality for making http requests to provide some improvements to the default client

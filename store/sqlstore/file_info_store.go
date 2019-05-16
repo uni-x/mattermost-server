@@ -7,10 +7,10 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/mattermost/mattermost-server/einterfaces"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/store"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/einterfaces"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/store"
+	"github.com/uni-x/mattermost-server/utils"
 )
 
 type SqlFileInfoStore struct {

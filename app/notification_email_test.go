@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/services/timezones"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/services/timezones"
+	"github.com/uni-x/mattermost-server/utils"
 )
 
 func TestGetDirectMessageNotificationEmailSubject(t *testing.T) {

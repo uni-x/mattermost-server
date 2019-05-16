@@ -11,10 +11,10 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/services/mailservice"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/services/mailservice"
+	"github.com/uni-x/mattermost-server/utils"
 )
 
 const (

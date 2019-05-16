@@ -3,11 +3,11 @@ package config_test
 import (
 	"testing"
 
-	"github.com/mattermost/mattermost-server/config"
+	"github.com/uni-x/mattermost-server/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 var emptyConfig, readOnlyConfig, minimalConfig, invalidConfig, fixesRequiredConfig, ldapConfig, testConfig *model.Config

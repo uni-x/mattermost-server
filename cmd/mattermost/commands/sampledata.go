@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/icrowley/fake"
-	"github.com/mattermost/mattermost-server/app"
+	"github.com/uni-x/mattermost-server/app"
 	"github.com/spf13/cobra"
 )
 

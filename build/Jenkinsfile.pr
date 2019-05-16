@@ -28,11 +28,11 @@ pipeline {
                 }
                 cleanWs notFailBuild: true
                 sh """
-                    mkdir -p src/github.com/mattermost/mattermost-server
+                    mkdir -p src/github.com/uni-x/mattermost-server
                     mkdir -p src/github.com/mattermost/mattermost-webapp
                     mkdir -p src/github.com/mattermost/enterprise
                 """
-                dir('src/github.com/mattermost/mattermost-server') {
+                dir('src/github.com/uni-x/mattermost-server') {
                     checkout scm
                 }
                 dir('src/github.com/mattermost/mattermost-webapp') {
@@ -80,7 +80,7 @@ pipeline {
                 withDockerContainer(args: '-u root --privileged -v ${WORKSPACE}/src:/go/src/', image: 'mattermost/mattermost-build-server:feb-28-2019') {
                     ansiColor('xterm') {
                         sh """
-                            cd /go/src/github.com/mattermost/mattermost-server
+                            cd /go/src/github.com/uni-x/mattermost-server
                             cp i18n/en.json /tmp/en.json
                             make i18n-extract
                             diff /tmp/en.json i18n/en.json
@@ -99,7 +99,7 @@ pipeline {
                 withDockerContainer(args: '-u root --privileged -v ${WORKSPACE}/src:/go/src/', image: 'mattermost/mattermost-build-server:feb-28-2019') {
                     ansiColor('xterm') {
                         sh """
-                            cd /go/src/github.com/mattermost/mattermost-server
+                            cd /go/src/github.com/uni-x/mattermost-server
                             mv config/default.json config/config.json || echo ""
                             make check-style BUILD_NUMBER='${BRANCH_NAME}-${BUILD_NUMBER}'
                             make build BUILD_NUMBER='${BRANCH_NAME}-${BUILD_NUMBER}'
@@ -131,7 +131,7 @@ pipeline {
             }
 
             steps {
-                dir('src/github.com/mattermost/mattermost-server/build') {
+                dir('src/github.com/uni-x/mattermost-server/build') {
                     ansiColor('xterm') {
                         sh """
                             docker-compose --no-ansi run --rm start_dependencies
@@ -144,7 +144,7 @@ pipeline {
                 withDockerContainer(args: "-u root --privileged --net ${COMPOSE_PROJECT_NAME}_mm-test -v ${WORKSPACE}/src:/go/src/", image: 'mattermost/mattermost-build-server:feb-28-2019') {
                     ansiColor('xterm') {
                         sh """
-                            cd /go/src/github.com/mattermost/mattermost-server
+                            cd /go/src/github.com/uni-x/mattermost-server
 
                             mkdir -p client/plugins
                             cat config/config.json
@@ -155,7 +155,7 @@ pipeline {
                     }
                     withCredentials([string(credentialsId: 'CODECOV_TOKEN', variable: 'CODECOV')]) {
                         sh '''
-                            cd /go/src/github.com/mattermost/mattermost-server
+                            cd /go/src/github.com/uni-x/mattermost-server
                             curl -s https://codecov.io/bash | bash -s - -t $CODECOV || echo 'Codecov failed to upload'
                         '''
                     }
@@ -173,7 +173,7 @@ pipeline {
                         }
                     }
                     steps {
-                        dir('src/github.com/mattermost/mattermost-server/dist') {
+                        dir('src/github.com/uni-x/mattermost-server/dist') {
                             step([$class: 'S3BucketPublisher', dontWaitForConcurrentBuildCompletion: false, entries: [[
                                 bucket: "releases.mattermost.com/mattermost-platform-pr/${CHANGE_ID}",
                                 excludedFile: '',
@@ -213,7 +213,7 @@ pipeline {
                         expression { env.CHANGE_ID == null }
                     }
                     steps {
-                        dir('src/github.com/mattermost/mattermost-server/dist') {
+                        dir('src/github.com/uni-x/mattermost-server/dist') {
                             step([$class: 'S3BucketPublisher', dontWaitForConcurrentBuildCompletion: false, entries: [[
                                 bucket: "releases.mattermost.com/mattermost-platform-pr/${BRANCH_NAME}",
                                 excludedFile: '',
@@ -248,11 +248,11 @@ pipeline {
 
     post {
         always {
-            dir('src/github.com/mattermost/mattermost-server') {
+            dir('src/github.com/uni-x/mattermost-server') {
                 junit allowEmptyResults: true, healthScaleFactor: 0.0, testResults: 'report*.xml'
                 archiveArtifacts 'report*.xml'
             }
-            dir('src/github.com/mattermost/mattermost-server/build') {
+            dir('src/github.com/uni-x/mattermost-server/build') {
                 ansiColor('xterm') {
                     sh """
                         docker-compose --no-ansi down -v

@@ -6,7 +6,7 @@ package app
 import (
 	"bufio"
 	"crypto/tls"
-	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/mlog"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattermost/mattermost-server/config"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils/fileutils"
+	"github.com/uni-x/mattermost-server/config"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/utils/fileutils"
 	"github.com/stretchr/testify/require"
 )
 

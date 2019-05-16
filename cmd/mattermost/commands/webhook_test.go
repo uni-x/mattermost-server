@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mattermost/mattermost-server/api4"
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/api4"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 func TestListWebhooks(t *testing.T) {

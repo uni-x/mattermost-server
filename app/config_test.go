@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/store/sqlstore"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/store/sqlstore"
+	"github.com/uni-x/mattermost-server/utils"
 )
 
 func TestConfigListener(t *testing.T) {

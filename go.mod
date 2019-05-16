@@ -1,4 +1,4 @@
-module github.com/mattermost/mattermost-server
+module github.com/uni-x/mattermost-server
 
 go 1.12
 

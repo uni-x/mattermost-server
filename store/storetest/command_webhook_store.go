@@ -8,8 +8,8 @@ import (
 
 	"net/http"
 
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/store"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/store"
 )
 
 func TestCommandWebhookStore(t *testing.T, ss store.Store) {

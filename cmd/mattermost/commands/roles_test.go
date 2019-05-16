@@ -6,7 +6,7 @@ package commands
 import (
 	"testing"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 func TestAssignRole(t *testing.T) {

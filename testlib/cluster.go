@@ -4,8 +4,8 @@
 package testlib
 
 import (
-	"github.com/mattermost/mattermost-server/einterfaces"
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/einterfaces"
+	"github.com/uni-x/mattermost-server/model"
 )
 
 type FakeClusterInterface struct {

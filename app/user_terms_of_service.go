@@ -3,7 +3,7 @@
 
 package app
 
-import "github.com/mattermost/mattermost-server/model"
+import "github.com/uni-x/mattermost-server/model"
 
 func (a *App) GetUserTermsOfService(userId string) (*model.UserTermsOfService, *model.AppError) {
 	if result := <-a.Srv.Store.UserTermsOfService().GetByUser(userId); result.Err != nil {

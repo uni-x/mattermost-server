@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mattermost/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/mlog"
 )
 
 const (

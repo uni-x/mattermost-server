@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/uni-x/mattermost-server/mlog"
+	"github.com/uni-x/mattermost-server/model"
+	"github.com/uni-x/mattermost-server/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +36,7 @@ func testPluginHealthCheck_Success(t *testing.T) {
 		package main
 
 		import (
-			"github.com/mattermost/mattermost-server/plugin"
+			"github.com/uni-x/mattermost-server/plugin"
 		)
 
 		type MyPlugin struct {
@@ -77,8 +77,8 @@ func testPluginHealthCheck_PluginPanicProcessCheck(t *testing.T) {
 		package main
 
 		import (
-			"github.com/mattermost/mattermost-server/model"
-			"github.com/mattermost/mattermost-server/plugin"
+			"github.com/uni-x/mattermost-server/model"
+			"github.com/uni-x/mattermost-server/plugin"
 		)
 
 		type MyPlugin struct {
@@ -130,7 +130,7 @@ func testPluginHealthCheck_RPCPingFail(t *testing.T) {
 		package main
 
 		import (
-			"github.com/mattermost/mattermost-server/plugin"
+			"github.com/uni-x/mattermost-server/plugin"
 		)
 
 		type MyPlugin struct {
