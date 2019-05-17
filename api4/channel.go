@@ -5,6 +5,7 @@ package api4
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/uni-x/mattermost-server/mlog"
 	"github.com/uni-x/mattermost-server/model"
@@ -1075,6 +1076,14 @@ func updateChannelMemberNotifyProps(c *Context, w http.ResponseWriter, r *http.R
 	ReturnStatusOK(w)
 }
 
+func canManageMembers(c *Context, creatorId string, channel *model.Channel) (bool, *model.AppError) {
+	creator, err := c.App.GetUser(creatorId)
+	if err != nil {
+		return false, err
+	}
+	return channel.Type == model.CHANNEL_OPEN || channel.CreatorId == creatorId || strings.Contains(creator.Roles, "system_admin"), nil
+}
+
 func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 	c.RequireChannelId()
 	if c.Err != nil {
@@ -1117,6 +1126,19 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	adderId := c.App.Session.UserId
+
+	canManage, err := canManageMembers(c, adderId, channel)
+	if err != nil {
+		c.Err = err
+		return
+	}
+
+	if !canManage {
+		c.Err = model.NewAppError("addUserToChannel", "api.channel.add_user_to_channel.type.app_error", nil, "", http.StatusBadRequest)
+		return
+	}
+
 	if channel.Type == model.CHANNEL_DIRECT || channel.Type == model.CHANNEL_GROUP {
 		c.Err = model.NewAppError("addUserToChannel", "api.channel.add_user_to_channel.type.app_error", nil, "", http.StatusBadRequest)
 		return
@@ -1132,7 +1154,7 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	isSelfAdd := member.UserId == c.App.Session.UserId
+	isSelfAdd := member.UserId == adderId
 
 	if channel.Type == model.CHANNEL_OPEN {
 		if isSelfAdd && isNewMembership {
@@ -1182,7 +1204,7 @@ func addChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cm, err := c.App.AddChannelMember(member.UserId, channel, c.App.Session.UserId, postRootId)
+	cm, err := c.App.AddChannelMember(member.UserId, channel, adderId, postRootId)
 	if err != nil {
 		c.Err = err
 		return
@@ -1205,6 +1227,19 @@ func removeChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	removerId := c.App.Session.UserId
+
+	canManage, err := canManageMembers(c, removerId, channel)
+	if err != nil {
+		c.Err = err
+		return
+	}
+
+	if !canManage {
+		c.Err = model.NewAppError("addUserToChannel", "api.channel.remove_channel_member.type.app_error", nil, "", http.StatusBadRequest)
+		return
+	}
+
 	if !(channel.Type == model.CHANNEL_OPEN || channel.Type == model.CHANNEL_PRIVATE) {
 		c.Err = model.NewAppError("removeChannelMember", "api.channel.remove_channel_member.type.app_error", nil, "", http.StatusBadRequest)
 		return
@@ -1215,7 +1250,7 @@ func removeChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if c.Params.UserId != c.App.Session.UserId {
+	if c.Params.UserId != removerId {
 		if channel.Type == model.CHANNEL_OPEN && !c.App.SessionHasPermissionToChannel(c.App.Session, channel.Id, model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS) {
 			c.SetPermissionError(model.PERMISSION_MANAGE_PUBLIC_CHANNEL_MEMBERS)
 			return
@@ -1227,7 +1262,7 @@ func removeChannelMember(c *Context, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err = c.App.RemoveUserFromChannel(c.Params.UserId, c.App.Session.UserId, channel); err != nil {
+	if err = c.App.RemoveUserFromChannel(c.Params.UserId, removerId, channel); err != nil {
 		c.Err = err
 		return
 	}
