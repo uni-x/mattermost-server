@@ -41,6 +41,7 @@ const (
 	PASSWORD_MINIMUM_LENGTH = 5
 
 	SERVICE_GITLAB    = "gitlab"
+	SERVICE_APPLE     = "apple"
 	SERVICE_GOOGLE    = "google"
 	SERVICE_OFFICE365 = "office365"
 
@@ -766,6 +767,8 @@ type SSOSettings struct {
 	Enable          *bool
 	Secret          *string
 	Id              *string
+	SecretNative    *string
+	IdNative        *string
 	Scope           *string
 	AuthEndpoint    *string
 	TokenEndpoint   *string
@@ -2251,6 +2254,7 @@ type Config struct {
 	ThemeSettings         ThemeSettings
 	GitLabSettings        SSOSettings
 	GoogleSettings        SSOSettings
+	AppleSettings         SSOSettings
 	Office365Settings     SSOSettings
 	LdapSettings          LdapSettings
 	ComplianceSettings    ComplianceSettings
@@ -2291,6 +2295,8 @@ func (o *Config) GetSSOService(service string) *SSOSettings {
 		return &o.GoogleSettings
 	case SERVICE_OFFICE365:
 		return &o.Office365Settings
+        case SERVICE_APPLE:
+		return &o.AppleSettings
 	}
 
 	return nil
@@ -2321,6 +2327,7 @@ func (o *Config) SetDefaults() {
 	o.Office365Settings.setDefaults()
 	o.GitLabSettings.setDefaults()
 	o.GoogleSettings.setDefaults()
+	o.AppleSettings.setDefaults()
 	o.ServiceSettings.SetDefaults()
 	o.PasswordSettings.SetDefaults()
 	o.TeamSettings.SetDefaults()

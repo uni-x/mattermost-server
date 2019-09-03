@@ -45,7 +45,9 @@ func (w *Web) InitStatic() {
 		w.MainRouter.PathPrefix("/static/plugins/").Handler(pluginHandler)
 		w.MainRouter.PathPrefix("/static/").Handler(staticHandler)
 		w.MainRouter.Handle("/robots.txt", http.HandlerFunc(robotsHandler))
+		w.MainRouter.Handle("/.well-known/apple-developer-domain-association.txt", http.HandlerFunc(appleHandler))
 		w.MainRouter.Handle("/{anything:.*}", w.NewStaticHandler(root)).Methods("GET")
+		w.MainRouter.Handle("/", w.NewStaticHandler(root)).Methods("POST")
 
 		// When a subpath is defined, it's necessary to handle redirects without a
 		// trailing slash. We don't want to use StrictSlash on the w.MainRouter and affect
@@ -96,4 +98,12 @@ func robotsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(robotsTxt)
+}
+
+func appleHandler(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	w.Write(appleDomainVerificationCode)
 }

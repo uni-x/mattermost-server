@@ -546,6 +546,13 @@ func (a *App) LoginByOAuth(service string, userData io.Reader, teamId string) (*
 	if err != nil {
 		if err.Id == store.MISSING_AUTH_ACCOUNT_ERROR {
 			user, err = a.CreateOAuthUser(service, bytes.NewReader(buf.Bytes()), teamId)
+			if err != nil {
+				return nil, err
+			}
+			err = a.AddUserToAllTeams(user)
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			return nil, err
 		}
@@ -684,10 +691,10 @@ func (a *App) GetAuthorizationCode(w http.ResponseWriter, r *http.Request, servi
 
 	siteUrl := a.GetSiteURL()
 	if strings.TrimSpace(siteUrl) == "" {
-		siteUrl = GetProtocol(r) + "://" + r.Host
+		siteUrl = "https://" + r.Host
 	}
 
-	redirectUri := siteUrl + "/signup/" + service + "/complete"
+	redirectUri := siteUrl + "/oauth/" + service + "/complete"
 
 	authUrl := endpoint + "?response_type=code&client_id=" + clientId + "&redirect_uri=" + url.QueryEscape(redirectUri) + "&state=" + url.QueryEscape(state)
 
@@ -697,6 +704,10 @@ func (a *App) GetAuthorizationCode(w http.ResponseWriter, r *http.Request, servi
 
 	if len(loginHint) > 0 {
 		authUrl += "&login_hint=" + utils.UrlEncode(loginHint)
+	}
+
+	if service == "apple" {
+		authUrl += "&response_mode=form_post"
 	}
 
 	return authUrl, nil
@@ -786,6 +797,18 @@ func (a *App) AuthorizeOAuthUser(w http.ResponseWriter, r *http.Request, service
 		return nil, "", stateProps, model.NewAppError("AuthorizeOAuthUser", "api.user.authorize_oauth_user.bad_response.app_error", nil, "response_body="+buf.String(), http.StatusInternalServerError)
 	}
 
+	if service == "apple" {
+		slices := strings.Split(ar.IdToken, ".")
+		if len(slices) < 2 {
+			return nil, "", stateProps, model.NewAppError("AuthorizeOAuthUser", "api.user.authorize_oauth_user.bad_response.app_error", nil, "bad_id_token "+ar.IdToken, http.StatusInternalServerError)
+		}
+		claims, err := b64.RawStdEncoding.DecodeString(slices[1])
+		if err != nil {
+			return nil, "", stateProps, model.NewAppError("AuthorizeOAuthUser", "api.user.authorize_oauth_user.bad_response.app_error", nil, "response_body="+err.Error(), http.StatusInternalServerError)
+		}
+		return ioutil.NopCloser(bytes.NewReader([]byte(claims))), teamId, stateProps, nil
+	}
+
 	if strings.ToLower(ar.TokenType) != model.ACCESS_TOKEN_TYPE {
 		return nil, "", stateProps, model.NewAppError("AuthorizeOAuthUser", "api.user.authorize_oauth_user.bad_token.app_error", nil, "token_type="+ar.TokenType+", response_body="+buf.String(), http.StatusInternalServerError)
 	}
@@ -827,6 +850,64 @@ func (a *App) AuthorizeOAuthUser(w http.ResponseWriter, r *http.Request, service
 
 	// Note that resp.Body is not closed here, so it must be closed by the caller
 	return resp.Body, teamId, stateProps, nil
+}
+
+func (a *App) AuthorizeAppleUser(w http.ResponseWriter, r *http.Request, code string) (io.ReadCloser, *model.AppError) {
+	service := "apple"
+	sso := a.Config().GetSSOService(service)
+	if sso == nil || !*sso.Enable {
+		return nil, model.NewAppError("AuthorizeAppleUser", "api.user.authorize_oauth_user.unsupported.app_error", nil, "service="+service, http.StatusNotImplemented)
+	}
+
+	subpath, _ := utils.GetSubpathFromConfig(a.Config())
+
+	httpCookie := &http.Cookie{
+		Name:     COOKIE_OAUTH,
+		Value:    "",
+		Path:     subpath,
+		MaxAge:   -1,
+		HttpOnly: true,
+	}
+
+	http.SetCookie(w, httpCookie)
+
+	p := url.Values{}
+	p.Set("client_id", *sso.IdNative)
+	p.Set("client_secret", *sso.SecretNative)
+	p.Set("code", code)
+	p.Set("grant_type", model.ACCESS_TOKEN_GRANT_TYPE)
+
+	req, requestErr := http.NewRequest("POST", *sso.TokenEndpoint, strings.NewReader(p.Encode()))
+	if requestErr != nil {
+		return nil, model.NewAppError("AuthorizeAppleUser", "api.user.authorize_oauth_user.token_failed.app_error", nil, requestErr.Error(), http.StatusInternalServerError)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := a.HTTPService.MakeClient(true).Do(req)
+	if err != nil {
+		return nil, model.NewAppError("AuthorizeAppleUser", "api.user.authorize_oauth_user.token_failed.app_error", nil, err.Error(), http.StatusInternalServerError)
+	}
+	defer resp.Body.Close()
+
+	var buf bytes.Buffer
+	tee := io.TeeReader(resp.Body, &buf)
+	ar := model.AccessResponseFromJson(tee)
+
+	if ar == nil || resp.StatusCode != http.StatusOK {
+		return nil, model.NewAppError("AuthorizeAppleUser", "api.user.authorize_oauth_user.bad_response.app_error", nil, "response_body="+buf.String(), http.StatusInternalServerError)
+	}
+
+	slices := strings.Split(ar.IdToken, ".")
+	if len(slices) < 2 {
+		return nil, model.NewAppError("AuthorizeAppleUser", "api.user.authorize_oauth_user.bad_response.app_error", nil, "bad_id_token "+ar.IdToken, http.StatusInternalServerError)
+	}
+	claims, err := b64.RawStdEncoding.DecodeString(slices[1])
+	if err != nil {
+		return nil, model.NewAppError("AuthorizeOAuthUser", "api.user.authorize_oauth_user.bad_response.app_error", nil, "response_body="+err.Error(), http.StatusInternalServerError)
+	}
+	return ioutil.NopCloser(bytes.NewReader([]byte(claims))), nil
 }
 
 func (a *App) SwitchEmailToOAuth(w http.ResponseWriter, r *http.Request, email, password, code, service string) (string, *model.AppError) {

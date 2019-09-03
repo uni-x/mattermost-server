@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-
 	"github.com/uni-x/mattermost-server/app"
 	"github.com/uni-x/mattermost-server/mlog"
 	"github.com/uni-x/mattermost-server/model"
@@ -35,9 +34,11 @@ func (api *API) InitOAuth() {
 
 	// API version independent OAuth as a client endpoints
 	api.BaseRoutes.Root.Handle("/oauth/{service:[A-Za-z0-9]+}/complete", api.ApiHandler(completeOAuth)).Methods("GET")
+	api.BaseRoutes.Root.Handle("/oauth/{service:[A-Za-z0-9]+}/complete", api.ApiHandler(completeOAuth)).Methods("POST")
 	api.BaseRoutes.Root.Handle("/oauth/{service:[A-Za-z0-9]+}/login", api.ApiHandler(loginWithOAuth)).Methods("GET")
 	api.BaseRoutes.Root.Handle("/oauth/{service:[A-Za-z0-9]+}/mobile_login", api.ApiHandler(mobileLoginWithOAuth)).Methods("GET")
 	api.BaseRoutes.Root.Handle("/oauth/{service:[A-Za-z0-9]+}/signup", api.ApiHandler(signupWithOAuth)).Methods("GET")
+	api.BaseRoutes.Root.Handle("/native-apple/complete", api.ApiHandler(completeApple)).Methods("GET")
 
 	// Old endpoints for backwards compatibility, needed to not break SSO for any old setups
 	api.BaseRoutes.Root.Handle("/api/v3/oauth/{service:[A-Za-z0-9]+}/complete", api.ApiHandler(completeOAuth)).Methods("GET")
@@ -458,8 +459,21 @@ func completeOAuth(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	service := c.Params.Service
+	var oauthError, code, state string
 
-	oauthError := r.URL.Query().Get("error")
+	if r.Method == http.MethodGet {
+		oauthError = r.URL.Query().Get("error")
+		code = r.URL.Query().Get("code")
+		state = r.URL.Query().Get("state")
+	} else if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			return
+		}
+		oauthError = r.FormValue("error")
+		code = r.FormValue("code")
+		state = r.FormValue("state")
+	}
+
 	if oauthError == "access_denied" {
 		utils.RenderWebError(c.App.Config(), w, r, http.StatusTemporaryRedirect, url.Values{
 			"type":    []string{"oauth_access_denied"},
@@ -468,7 +482,6 @@ func completeOAuth(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code := r.URL.Query().Get("code")
 	if len(code) == 0 {
 		utils.RenderWebError(c.App.Config(), w, r, http.StatusTemporaryRedirect, url.Values{
 			"type":    []string{"oauth_missing_code"},
@@ -477,9 +490,7 @@ func completeOAuth(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state := r.URL.Query().Get("state")
-
-	uri := c.GetSiteURLHeader() + "/signup/" + service + "/complete"
+	uri := c.GetSiteURLHeader() + "/oauth/" + service + "/complete"
 
 	body, teamId, props, err := c.App.AuthorizeOAuthUser(w, r, service, code, state, uri)
 
@@ -539,6 +550,46 @@ func completeOAuth(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, redirectUrl, http.StatusTemporaryRedirect)
+}
+
+func completeApple(c *Context, w http.ResponseWriter, r *http.Request) {
+	service := "apple"
+
+	code := r.URL.Query().Get("code")
+
+	if len(code) == 0 {
+		utils.RenderWebError(c.App.Config(), w, r, http.StatusTemporaryRedirect, url.Values{
+			"type":    []string{"oauth_missing_code"},
+			"service": []string{strings.Title(service)},
+		}, c.App.AsymmetricSigningKey())
+		return
+	}
+
+	body, err := c.App.AuthorizeAppleUser(w, r, code)
+
+	if err != nil {
+		err.Translate(c.App.T)
+		mlog.Error(err.Error())
+		utils.RenderWebAppError(c.App.Config(), w, r, err, c.App.AsymmetricSigningKey())
+		return
+	}
+
+	user, err := c.App.CompleteOAuth(service, body, "", nil)
+	if err != nil {
+		err.Translate(c.App.T)
+		mlog.Error(err.Error())
+		utils.RenderWebAppError(c.App.Config(), w, r, err, c.App.AsymmetricSigningKey())
+		return
+	}
+
+	session, err := c.App.DoLogin(w, r, user, "")
+	if err != nil {
+		err.Translate(c.App.T)
+		c.Err = err
+		return
+	}
+
+	c.App.Session = *session
 }
 
 func loginWithOAuth(c *Context, w http.ResponseWriter, r *http.Request) {

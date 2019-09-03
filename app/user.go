@@ -154,15 +154,24 @@ func (a *App) CreateUserFromSignup(user *model.User) (*model.User, *model.AppErr
 		return nil, err
 	}
 
+	err = a.AddUserToAllTeams(ruser)
+	if err != nil {
+		return nil, err
+	}
+
+	return ruser, nil
+}
+
+func (a *App) AddUserToAllTeams(ruser *model.User) *model.AppError {
        result := <-a.Srv.Store.Team().GetAll()
        if result.Err != nil {
-               return nil, result.Err
+               return result.Err
        }
        teams := result.Data.([]*model.Team)
        if len(teams) > 0 {
                team := teams[0]
                if err := a.JoinUserToTeam(team, ruser, ""); err != nil {
-                       return nil, err
+                       return err
                }
                a.AddDirectChannels(team.Id, ruser)
        }
@@ -171,7 +180,7 @@ func (a *App) CreateUserFromSignup(user *model.User) (*model.User, *model.AppErr
 		mlog.Error(err.Error())
 	}
 
-	return ruser, nil
+	return nil
 }
 
 func (a *App) IsUserSignUpAllowed() *model.AppError {

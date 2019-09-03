@@ -9,7 +9,7 @@ import (
 	"github.com/uni-x/mattermost-server/cmd/mattermost/commands"
 
 	// Plugins
-	_ "github.com/uni-x/mattermost-server/model/gitlab"
+	_ "github.com/uni-x/mattermost-server/model/apple"
 
 	// Enterprise Imports
 	_ "github.com/uni-x/mattermost-server/imports"

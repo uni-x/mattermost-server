@@ -71,7 +71,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.Log = c.App.Log
 
 	subpath, _ := utils.GetSubpathFromConfig(c.App.Config())
-	siteURLHeader := app.GetProtocol(r) + "://" + r.Host + subpath
+	siteURLHeader := "https://" + r.Host + subpath
 	c.SetSiteURLHeader(siteURLHeader)
 
 	w.Header().Set(model.HEADER_REQUEST_ID, c.App.RequestId)
