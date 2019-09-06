@@ -401,6 +401,67 @@ func (a *App) CreateOAuthUser(service string, userData io.Reader, teamId string)
 	return ruser, nil
 }
 
+func (a *App) CreateOAuthUserApple(userData io.Reader, firstName, lastName string) (*model.User, *model.AppError) {
+	service := "apple"
+	if !*a.Config().TeamSettings.EnableUserCreation {
+		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_user.disabled.app_error", nil, "", http.StatusNotImplemented)
+	}
+
+	provider := einterfaces.GetOauthProvider(service)
+	if provider == nil {
+		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.not_available.app_error", map[string]interface{}{"Service": strings.Title(service)}, "", http.StatusNotImplemented)
+	}
+	user := provider.GetUserFromJson(userData)
+
+	if user == nil {
+		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.create.app_error", map[string]interface{}{"Service": service}, "", http.StatusInternalServerError)
+	}
+
+	suchan := a.Srv.Store.User().GetByAuth(user.AuthData, service)
+	euchan := a.Srv.Store.User().GetByEmail(user.Email)
+
+	found := true
+	count := 0
+	for found {
+		if found = a.IsUsernameTaken(user.Username); found {
+			user.Username = user.Username + strconv.Itoa(count)
+			count++
+		}
+	}
+
+	if result := <-suchan; result.Err == nil {
+		return result.Data.(*model.User), nil
+	}
+
+	if result := <-euchan; result.Err == nil {
+		authService := result.Data.(*model.User).AuthService
+		if authService == "" {
+			return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.already_attached.app_error", map[string]interface{}{"Service": service, "Auth": model.USER_AUTH_SERVICE_EMAIL}, "email="+user.Email, http.StatusBadRequest)
+		}
+		return nil, model.NewAppError("CreateOAuthUser", "api.user.create_oauth_user.already_attached.app_error", map[string]interface{}{"Service": service, "Auth": authService}, "email="+user.Email, http.StatusBadRequest)
+	}
+
+	user.EmailVerified = true
+
+	user.FirstName = firstName
+	user.LastName = lastName
+	username := firstName+" "+lastName
+	if username == "" {
+		username = user.Email
+	}
+	if len(username) > 22 {
+		username = username[:22]
+	}
+	user.Username = model.CleanUsername(username)
+
+	ruser, err := a.CreateUser(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return ruser, nil
+}
+
 // CheckUserDomain checks that a user's email domain matches a list of space-delimited domains as a string.
 func CheckUserDomain(user *model.User, domains string) bool {
 	if len(domains) == 0 {

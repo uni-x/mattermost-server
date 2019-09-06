@@ -6,7 +6,6 @@ package oauthapple
 import (
 	"encoding/json"
 	"io"
-	"strings"
 
 	"github.com/uni-x/mattermost-server/einterfaces"
 	"github.com/uni-x/mattermost-server/model"
@@ -20,8 +19,6 @@ type AppleUser struct {
 	Sub       string  `json:"sub"`
 	Email     string  `json:"email"`
 	Name      string  `json:"name"`
-	FirstName string  `json:"firstName"`
-	LastName  string  `json:"lastName"`
 }
 
 func init() {
@@ -31,28 +28,6 @@ func init() {
 
 func userFromAppleUser(au *AppleUser) *model.User {
 	user := &model.User{}
-	username := au.FirstName+" "+au.LastName
-	if username == "" {
-		username = au.Name
-		if username == "" {
-			username = au.Sub
-		}
-		splitName := strings.Split(username, " ")
-		if len(splitName) == 2 {
-			user.FirstName = splitName[0]
-			user.LastName = splitName[1]
-		} else if len(splitName) >= 2 {
-			user.FirstName = splitName[0]
-			user.LastName = strings.Join(splitName[1:], " ")
-		} else {
-			user.FirstName = au.Name
-		}
-	} else {
-		user.FirstName = au.FirstName
-		user.LastName = au.LastName
-	}
-	if len(username) > 22 { username = username[:22] }
-	user.Username = model.CleanUsername(username)
 	if au.Email != "" {
 		user.Email = au.Email
 	} else {

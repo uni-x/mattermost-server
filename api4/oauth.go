@@ -556,6 +556,8 @@ func completeApple(c *Context, w http.ResponseWriter, r *http.Request) {
 	service := "apple"
 
 	code := r.URL.Query().Get("code")
+	firstName := r.URL.Query().Get("first_name")
+	lastName := r.URL.Query().Get("last_name")
 
 	if len(code) == 0 {
 		utils.RenderWebError(c.App.Config(), w, r, http.StatusTemporaryRedirect, url.Values{
@@ -574,7 +576,7 @@ func completeApple(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := c.App.CompleteOAuth(service, body, "", nil)
+	user, err := c.App.LoginByOAuthApple(body, firstName, lastName)
 	if err != nil {
 		err.Translate(c.App.T)
 		mlog.Error(err.Error())
@@ -590,6 +592,7 @@ func completeApple(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.App.Session = *session
+	w.Write([]byte(user.ToJson()))
 }
 
 func loginWithOAuth(c *Context, w http.ResponseWriter, r *http.Request) {

@@ -579,6 +579,65 @@ func (a *App) LoginByOAuth(service string, userData io.Reader, teamId string) (*
 	return user, nil
 }
 
+func (a *App) LoginByOAuthApple(userData io.Reader, firstName, lastName string) (*model.User, *model.AppError) {
+	service := "apple"
+	provider := einterfaces.GetOauthProvider(service)
+	if provider == nil {
+		return nil, model.NewAppError("LoginByOAuth", "api.user.login_by_oauth.not_available.app_error",
+			map[string]interface{}{"Service": strings.Title(service)}, "", http.StatusNotImplemented)
+	}
+
+	buf := bytes.Buffer{}
+	if _, err := buf.ReadFrom(userData); err != nil {
+		return nil, model.NewAppError("LoginByOAuth", "api.user.login_by_oauth.parse.app_error",
+			map[string]interface{}{"Service": service}, "", http.StatusBadRequest)
+	}
+	authUser := provider.GetUserFromJson(bytes.NewReader(buf.Bytes()))
+
+	authData := ""
+	if authUser.AuthData != nil {
+		authData = *authUser.AuthData
+	}
+
+	if len(authData) == 0 {
+		return nil, model.NewAppError("LoginByOAuth", "api.user.login_by_oauth.parse.app_error",
+			map[string]interface{}{"Service": service}, "", http.StatusBadRequest)
+	}
+
+	user, err := a.GetUserByAuth(&authData, service)
+	if err != nil {
+		if err.Id == store.MISSING_AUTH_ACCOUNT_ERROR {
+			user, err = a.CreateOAuthUserApple(bytes.NewReader(buf.Bytes()), firstName, lastName)
+			if err != nil {
+				return nil, err
+			}
+			err = a.AddUserToAllTeams(user)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	} else {
+		// OAuth doesn't run through CheckUserPreflightAuthenticationCriteria, so prevent bot login
+		// here manually. Technically, the auth data above will fail to match a bot in the first
+		// place, but explicit is always better.
+		if user.IsBot {
+			return nil, model.NewAppError("loginByOAuth", "api.user.login_by_oauth.bot_login_forbidden.app_error", nil, "", http.StatusForbidden)
+		}
+
+		if err = a.UpdateOAuthUserAttrs(bytes.NewReader(buf.Bytes()), user, provider, service); err != nil {
+			return nil, err
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
 func (a *App) CompleteSwitchWithOAuth(service string, userData io.Reader, email string) (*model.User, *model.AppError) {
 	provider := einterfaces.GetOauthProvider(service)
 	if provider == nil {
