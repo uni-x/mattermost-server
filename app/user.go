@@ -1943,14 +1943,15 @@ func (a *App) UpdateOAuthUserAttrs(userData io.Reader, user *model.User, provide
 
 	userAttrsChanged := false
 
-	if oauthUser.Username != user.Username {
+	if oauthUser.Username != "" && oauthUser.Username != user.Username {
 		if existingUser, _ := a.GetUserByUsername(oauthUser.Username); existingUser == nil {
 			user.Username = oauthUser.Username
 			userAttrsChanged = true
 		}
 	}
 
-	if oauthUser.GetFullName() != user.GetFullName() {
+	newFullName := oauthUser.GetFullName()
+	if newFullName != "" && newFullName != user.GetFullName() {
 		user.FirstName = oauthUser.FirstName
 		user.LastName = oauthUser.LastName
 		userAttrsChanged = true
