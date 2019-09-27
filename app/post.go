@@ -1037,3 +1037,18 @@ func (a *App) MaxPostSize() int {
 	}
 	return result.Data.(int)
 }
+
+func (a *App) ReportAbuse(userID, postID, permalink string) *model.AppError {
+	user, err := a.GetUser(userID)
+	if err != nil {
+		return err
+	}
+	to := *a.Config().SupportSettings.SupportEmail
+	subject := "Report Abuse"
+	htmlBody := `
+<h1>Report Abuse</h1>
+<p><span>` + user.Username + ` reported that the post under permalink </span><a>` + permalink + `</a> <span> can contain inappropriate content</span></p>
+<p>The post ID is ` + postID + `</p>
+`
+	return a.SendMail(to, subject, htmlBody)
+}

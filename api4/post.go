@@ -27,6 +27,7 @@ func (api *API) InitPost() {
 	api.BaseRoutes.Post.Handle("/patch", api.ApiSessionRequired(patchPost)).Methods("PUT")
 	api.BaseRoutes.Post.Handle("/pin", api.ApiSessionRequired(pinPost)).Methods("POST")
 	api.BaseRoutes.Post.Handle("/unpin", api.ApiSessionRequired(unpinPost)).Methods("POST")
+	api.BaseRoutes.Post.Handle("/report-abuse", api.ApiSessionRequired(reportAbuse)).Methods("GET")
 }
 
 func createPost(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -229,6 +230,17 @@ func getFlaggedPostsForUser(c *Context, w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Write([]byte(c.App.PreparePostListForClient(pl).ToJson()))
+}
+
+func reportAbuse(c *Context, w http.ResponseWriter, r *http.Request) {
+	c.RequirePostId()
+	if c.Err != nil {
+		return
+	}
+
+	permalink := r.URL.Query().Get("permalink")
+
+	c.Err = c.App.ReportAbuse(c.App.Session.UserId, c.Params.PostId, permalink)
 }
 
 func getPost(c *Context, w http.ResponseWriter, r *http.Request) {
