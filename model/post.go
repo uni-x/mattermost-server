@@ -82,6 +82,7 @@ type Post struct {
 
 	// Transient data populated before sending a post to the client
 	Metadata *PostMetadata `json:"metadata,omitempty" db:"-"`
+	Hidden  bool            `json:"hidden" db:"-"`
 }
 
 type PostEphemeral struct {

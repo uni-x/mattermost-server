@@ -83,6 +83,10 @@ func (s *LayeredStore) Post() PostStore {
 	return s.DatabaseLayer.Post()
 }
 
+func (s *LayeredStore) HiddenPosts() HiddenPostsStore {
+	return s.DatabaseLayer.HiddenPosts()
+}
+
 func (s *LayeredStore) User() UserStore {
 	return s.DatabaseLayer.User()
 }

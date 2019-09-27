@@ -28,6 +28,8 @@ func (api *API) InitPost() {
 	api.BaseRoutes.Post.Handle("/pin", api.ApiSessionRequired(pinPost)).Methods("POST")
 	api.BaseRoutes.Post.Handle("/unpin", api.ApiSessionRequired(unpinPost)).Methods("POST")
 	api.BaseRoutes.Post.Handle("/report-abuse", api.ApiSessionRequired(reportAbuse)).Methods("GET")
+	api.BaseRoutes.Post.Handle("/hide", api.ApiSessionRequired(hidePostFromUser)).Methods("GET")
+	api.BaseRoutes.Post.Handle("/show", api.ApiSessionRequired(showPostToUser)).Methods("GET")
 }
 
 func createPost(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -170,6 +172,12 @@ func getPostsForChannel(c *Context, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(model.HEADER_ETAG_SERVER, etag)
 	}
 
+	err = c.App.AddHiddenToList(list, c.App.Session.UserId)
+	if err != nil {
+		c.Err = err
+		return
+	}
+
 	w.Write([]byte(c.App.PreparePostListForClient(list).ToJson()))
 }
 
@@ -229,18 +237,13 @@ func getFlaggedPostsForUser(c *Context, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Write([]byte(c.App.PreparePostListForClient(pl).ToJson()))
-}
-
-func reportAbuse(c *Context, w http.ResponseWriter, r *http.Request) {
-	c.RequirePostId()
-	if c.Err != nil {
+	err = c.App.AddHiddenToList(posts, c.App.Session.UserId)
+	if err != nil {
+		c.Err = err
 		return
 	}
 
-	permalink := r.URL.Query().Get("permalink")
-
-	c.Err = c.App.ReportAbuse(c.App.Session.UserId, c.Params.PostId, permalink)
+	w.Write([]byte(c.App.PreparePostListForClient(pl).ToJson()))
 }
 
 func getPost(c *Context, w http.ResponseWriter, r *http.Request) {
@@ -276,6 +279,12 @@ func getPost(c *Context, w http.ResponseWriter, r *http.Request) {
 	post = c.App.PreparePostForClient(post, false)
 
 	if c.HandleEtag(post.Etag(), "Get Post", w, r) {
+		return
+	}
+
+	err = c.App.AddHiddenToPost(post, c.App.Session.UserId)
+	if err != nil {
+		c.Err = err
 		return
 	}
 
@@ -357,6 +366,12 @@ func getPostThread(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	clientPostList := c.App.PreparePostListForClient(list)
 
+	err = c.App.AddHiddenToList(clientPostList, c.App.Session.UserId)
+	if err != nil {
+		c.Err = err
+		return
+	}
+
 	w.Header().Set(model.HEADER_ETAG_SERVER, clientPostList.Etag())
 
 	w.Write([]byte(clientPostList.ToJson()))
@@ -423,6 +438,12 @@ func searchPosts(c *Context, w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientPostList := c.App.PreparePostListForClient(results.PostList)
+
+	err = c.App.AddHiddenToList(clientPostList, c.App.Session.UserId)
+	if err != nil {
+		c.Err = err
+		return
+	}
 
 	results = model.MakePostSearchResults(clientPostList, results.Matches)
 
@@ -606,4 +627,33 @@ func getFileInfosForPost(c *Context, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "max-age=2592000, public")
 	w.Header().Set(model.HEADER_ETAG_SERVER, model.GetEtagForFileInfos(infos))
 	w.Write([]byte(model.FileInfosToJson(infos)))
+}
+
+func reportAbuse(c *Context, w http.ResponseWriter, r *http.Request) {
+	c.RequirePostId()
+	if c.Err != nil {
+		return
+	}
+
+	permalink := r.URL.Query().Get("permalink")
+
+	c.Err = c.App.ReportAbuse(c.App.Session.UserId, c.Params.PostId, permalink)
+}
+
+func hidePostFromUser(c *Context, w http.ResponseWriter, r *http.Request) {
+	c.RequirePostId()
+	if c.Err != nil {
+		return
+	}
+
+	c.Err = c.App.HidePostFromUser(c.Params.PostId, c.App.Session.UserId)
+}
+
+func showPostToUser(c *Context, w http.ResponseWriter, r *http.Request) {
+	c.RequirePostId()
+	if c.Err != nil {
+		return
+	}
+
+	c.Err = c.App.ShowPostToUser(c.Params.PostId, c.App.Session.UserId)
 }

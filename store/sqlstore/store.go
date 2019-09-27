@@ -72,6 +72,7 @@ type SqlStore interface {
 	Team() store.TeamStore
 	Channel() store.ChannelStore
 	Post() store.PostStore
+	HiddenPosts() store.HiddenPostsStore
 	User() store.UserStore
 	Bot() store.BotStore
 	Audit() store.AuditStore

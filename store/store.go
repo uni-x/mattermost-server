@@ -48,6 +48,7 @@ type Store interface {
 	ClusterDiscovery() ClusterDiscoveryStore
 	Compliance() ComplianceStore
 	Session() SessionStore
+	HiddenPosts() HiddenPostsStore
 	OAuth() OAuthStore
 	System() SystemStore
 	Webhook() WebhookStore
@@ -310,6 +311,13 @@ type BotStore interface {
 	Save(bot *model.Bot) StoreChannel
 	Update(bot *model.Bot) StoreChannel
 	PermanentDelete(userId string) StoreChannel
+}
+
+type HiddenPostsStore interface {
+	Get(postId, userId string) StoreChannel
+	Save(postId, userId string) StoreChannel
+	Delete(postId, userId string) StoreChannel
+	DeletePost(postId string) StoreChannel
 }
 
 type SessionStore interface {

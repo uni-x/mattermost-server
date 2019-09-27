@@ -739,6 +739,9 @@ func (a *App) DeletePost(postId, deleteByID string) (*model.Post, *model.AppErro
 		return nil, result.Err
 	}
 
+	if result := <-a.Srv.Store.HiddenPosts().DeletePost(postId); result.Err == nil {
+	}
+
 	message := model.NewWebSocketEvent(model.WEBSOCKET_EVENT_POST_DELETED, "", post.ChannelId, "", nil)
 	message.Add("post", a.PreparePostForClient(post, false).ToJson())
 	a.Publish(message)
@@ -1051,4 +1054,34 @@ func (a *App) ReportAbuse(userID, postID, permalink string) *model.AppError {
 <p>The post ID is ` + postID + `</p>
 `
 	return a.SendMail(to, subject, htmlBody)
+}
+
+func (a *App) HidePostFromUser(postId, userId string) *model.AppError {
+	result := <-a.Srv.Store.HiddenPosts().Save(postId, userId)
+	return result.Err
+}
+
+func (a *App) ShowPostToUser(postId, userId string) *model.AppError {
+	result := <-a.Srv.Store.HiddenPosts().Delete(postId, userId)
+	return result.Err
+}
+
+func (a *App) AddHiddenToPost(post *model.Post, userId string) *model.AppError {
+	result := <-a.Srv.Store.HiddenPosts().Get(post.Id, userId)
+	if result.Err != nil {
+		return result.Err
+	}
+	post.Hidden = result.Data.(bool)
+fmt.Println("POST IS HIDDEN:", post.Id, post.Hidden)
+	return nil
+}
+
+func (a *App) AddHiddenToList(postList *model.PostList, userId string) *model.AppError {
+	for _, post := range postList.Posts {
+		err := a.AddHiddenToPost(post, userId)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

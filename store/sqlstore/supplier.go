@@ -71,6 +71,7 @@ type SqlSupplierOldStores struct {
 	team                 store.TeamStore
 	channel              store.ChannelStore
 	post                 store.PostStore
+	hiddenPosts          store.HiddenPostsStore
 	user                 store.UserStore
 	bot                  store.BotStore
 	audit                store.AuditStore
@@ -128,6 +129,7 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 	supplier.oldStores.team = NewSqlTeamStore(supplier, metrics)
 	supplier.oldStores.channel = NewSqlChannelStore(supplier, metrics)
 	supplier.oldStores.post = NewSqlPostStore(supplier, metrics)
+	supplier.oldStores.hiddenPosts = NewSqlHiddenPostsStore(supplier, metrics)
 	supplier.oldStores.user = NewSqlUserStore(supplier, metrics)
 	supplier.oldStores.bot = NewSqlBotStore(supplier, metrics)
 	supplier.oldStores.audit = NewSqlAuditStore(supplier)
@@ -176,6 +178,7 @@ func NewSqlSupplier(settings model.SqlSettings, metrics einterfaces.MetricsInter
 	supplier.oldStores.team.(*SqlTeamStore).CreateIndexesIfNotExists()
 	supplier.oldStores.channel.(*SqlChannelStore).CreateIndexesIfNotExists()
 	supplier.oldStores.post.(*SqlPostStore).CreateIndexesIfNotExists()
+	supplier.oldStores.hiddenPosts.(*SqlHiddenPostsStore).CreateIndexesIfNotExists()
 	supplier.oldStores.user.(*SqlUserStore).CreateIndexesIfNotExists()
 	supplier.oldStores.bot.(*SqlBotStore).CreateIndexesIfNotExists()
 	supplier.oldStores.audit.(*SqlAuditStore).CreateIndexesIfNotExists()
@@ -941,6 +944,10 @@ func (ss *SqlSupplier) Channel() store.ChannelStore {
 
 func (ss *SqlSupplier) Post() store.PostStore {
 	return ss.oldStores.post
+}
+
+func (ss *SqlSupplier) HiddenPosts() store.HiddenPostsStore {
+	return ss.oldStores.hiddenPosts
 }
 
 func (ss *SqlSupplier) User() store.UserStore {
