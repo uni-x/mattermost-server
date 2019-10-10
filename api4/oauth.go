@@ -558,6 +558,7 @@ func completeApple(c *Context, w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	firstName := r.URL.Query().Get("first_name")
 	lastName := r.URL.Query().Get("last_name")
+	deviceId := r.URL.Query().Get("device_id")
 
 	if len(code) == 0 {
 		utils.RenderWebError(c.App.Config(), w, r, http.StatusTemporaryRedirect, url.Values{
@@ -584,7 +585,7 @@ func completeApple(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := c.App.DoLogin(w, r, user, "")
+	session, err := c.App.DoLogin(w, r, user, deviceId)
 	if err != nil {
 		err.Translate(c.App.T)
 		c.Err = err

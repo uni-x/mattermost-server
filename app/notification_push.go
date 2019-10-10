@@ -126,7 +126,7 @@ func (a *App) sendPushNotificationSync(post *model.Post, user *model.User, chann
 				mlog.String("error", err.Error()),
 				mlog.String("userId", session.UserId),
 				mlog.String("sessionId", session.Id),
-				mlog.String("deviceId", msg.DeviceId),
+				mlog.String("deviceId", session.DeviceId),
 				mlog.String("ackId", msg.AckId),
 			)
 			appErr := a.Srv.Store.NotificationRegistry().UpdateSendStatus(tmpMessage.AckId, model.PUSH_SEND_ERROR+": "+err.Error())

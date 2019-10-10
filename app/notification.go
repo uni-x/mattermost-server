@@ -280,7 +280,6 @@ func (a *App) SendNotifications(post *model.Post, team *model.Team, channel *mod
 			sendPushNotifications = true
 		}
 	}
-
 	if sendPushNotifications {
 		for _, id := range mentionedUsersList {
 			if profileMap[id] == nil {
