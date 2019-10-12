@@ -1,0 +1,58 @@
+[1mdiff --git a/api4/post.go b/api4/post.go[m
+[1mindex 5fd5d23..314cbc5 100644[m
+[1m--- a/api4/post.go[m
+[1m+++ b/api4/post.go[m
+[36m@@ -15,6 +15,7 @@[m [mimport ([m
+ func (api *API) InitPost() {[m
+ 	api.BaseRoutes.Posts.Handle("", api.ApiSessionRequired(createPost)).Methods("POST")[m
+ 	api.BaseRoutes.Post.Handle("", api.ApiSessionRequired(getPost)).Methods("GET")[m
+[32m+[m	[32mapi.BaseRoutes.Post.Handle("/hidden", api.ApiSessionRequired(getPostHidden)).Methods("GET")[m
+ 	api.BaseRoutes.Post.Handle("", api.ApiSessionRequired(deletePost)).Methods("DELETE")[m
+ 	api.BaseRoutes.Posts.Handle("/ephemeral", api.ApiSessionRequired(createEphemeralPost)).Methods("POST")[m
+ 	api.BaseRoutes.Post.Handle("/thread", api.ApiSessionRequired(getPostThread)).Methods("GET")[m
+[36m@@ -278,7 +279,30 @@[m [mfunc getPost(c *Context, w http.ResponseWriter, r *http.Request) {[m
+ [m
+ 	post = c.App.PreparePostForClient(post, false)[m
+ [m
+[31m-	if c.HandleEtag(post.Etag(), "Get Post", w, r) {[m
+[32m+[m	[32mhidden := post.Hidden[m
+[32m+[m	[32merr = c.App.AddHiddenToPost(post, c.App.Session.UserId)[m
+[32m+[m	[32mif err != nil {[m
+[32m+[m		[32mc.Err = err[m
+[32m+[m		[32mreturn[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32mif c.HandleEtag(post.Etag(), "Get Post", w, r) && hidden == post.Hidden {[m
+[32m+[m		[32mreturn[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32mw.Header().Set(model.HEADER_ETAG_SERVER, post.Etag())[m
+[32m+[m	[32mw.Write([]byte(post.ToJson()))[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc getPostHidden(c *Context, w http.ResponseWriter, r *http.Request) {[m
+[32m+[m	[32mc.RequirePostId()[m
+[32m+[m	[32mif c.Err != nil {[m
+[32m+[m		[32mreturn[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32mpost, err := c.App.GetSinglePost(c.Params.PostId)[m
+[32m+[m	[32mif err != nil {[m
+[32m+[m		[32mc.Err = err[m
+ 		return[m
+ 	}[m
+ [m
+[36m@@ -288,8 +312,11 @@[m [mfunc getPost(c *Context, w http.ResponseWriter, r *http.Request) {[m
+ 		return[m
+ 	}[m
+ [m
+[31m-	w.Header().Set(model.HEADER_ETAG_SERVER, post.Etag())[m
+[31m-	w.Write([]byte(post.ToJson()))[m
+[32m+[m	[32mif post.Hidden {[m
+[32m+[m		[32mw.Write([]byte("true"))[m
+[32m+[m	[32m} else {[m
+[32m+[m		[32mw.Write([]byte("false"))[m
+[32m+[m	[32m}[m
+ }[m
+ [m
+ func deletePost(c *Context, w http.ResponseWriter, r *http.Request) {[m

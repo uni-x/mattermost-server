@@ -278,13 +278,14 @@ func getPost(c *Context, w http.ResponseWriter, r *http.Request) {
 
 	post = c.App.PreparePostForClient(post, false)
 
-	if c.HandleEtag(post.Etag(), "Get Post", w, r) {
-		return
-	}
-
+	hidden := post.Hidden
 	err = c.App.AddHiddenToPost(post, c.App.Session.UserId)
 	if err != nil {
 		c.Err = err
+		return
+	}
+
+	if c.HandleEtag(post.Etag(), "Get Post", w, r) && hidden == post.Hidden {
 		return
 	}
 
