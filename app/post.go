@@ -1072,7 +1072,6 @@ func (a *App) AddHiddenToPost(post *model.Post, userId string) *model.AppError {
 		return result.Err
 	}
 	post.Hidden = result.Data.(bool)
-fmt.Println("POST IS HIDDEN:", post.Id, post.Hidden)
 	return nil
 }
 
